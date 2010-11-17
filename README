@@ -1,0 +1,23 @@
+IO::Socket::Socks v0.1
+
+This module seeks to provide a full implementation of the SOCKS5 protocol
+while behaving like a regular socket as much as possible.
+
+Ryan Eatmon
+reatmon@mail.com
+
+
+INSTALLATION
+
+  perl Makefile.PL
+  make
+  make install
+
+STATUS
+
+    Initial release so that I can use it some other projects.  Should be
+fairly stable if you stay within my test cases.  =)
+
+Please send any bug reports to reatmon@mail.com.
+2003/07/15
+

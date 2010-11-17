@@ -1,0 +1,14 @@
+CHANGES
+README
+LICENSE.LGPL
+MANIFEST
+MANIFEST.SKIP
+Makefile.PL
+examples/client.pl
+examples/server.pl
+lib/IO/Socket/Socks.pm
+t/1_load.t
+t/2_new.t
+t/lib/Test/Builder.pm
+t/lib/Test/More.pm
+t/lib/Test/Simple.pm
