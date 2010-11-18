@@ -20,183 +20,10 @@
 ##############################################################################
 package IO::Socket::Socks;
 
-=head1 NAME
-
-IO::Socket::Socks
-
-=head1 SYNOPSIS
-
-Provides a way to open a connection to a SOCKS v5 proxy and use the object
-just like an IO::Socket.
-
-=head1 DESCRIPTION
-
-IO::Socket::Socks connects to a SOCKS v5 proxy, tells it to open a
-connection to a remote host/port when the object is created.  The
-object you receive can be used directly as a socket for sending and
-receiving data from the remote host.
-
-=head1 EXAMPLES
-
-=head2 Client
-
-use IO::Socket::Socks;
-
-my $socks = new IO::Socket::Socks(ProxyAddr=>"proxy host",
-                                  ProxyPort=>"proxy port",
-                                  ConnectAddr=>"remote host",
-                                  ConnectPort=>"remote port",
-                                 );
-
-print $socks "foo\n";
-
-$socks->close();
-
-=head2 Server
-
-use IO::Socket::Socks;
-
-my $socks_server = new IO::Socket::Socks(ProxyAddr=>"localhost",
-                                         ProxyPort=>"8000",
-                                         Listen=>1,
-                                         UserAuth=>\&auth,
-                                         RequireAuth=>1
-                                        );
-
-my $select = new IO::Select($socks_server);
-        
-while(1)
-{
-    if ($select->can_read())
-    {
-        my $client = $socks_server->accept();
-
-        if (!defined($client))
-        {
-            print "ERROR: $SOCKS_ERROR\n";
-            next;
-        }
-
-        my $command = $client->command();
-        if ($command->[0] == 1)  # CONNECT
-        {
-            # Handle the CONNECT
-            $client->command_reply(0, addr, port);
-        }
-        
-        ...
-        #read from the client and send to the CONNECT address
-        ...
-
-        $client->close();
-    }
-}
-        
-
-sub auth
-{
-    my $user = shift;
-    my $pass = shift;
-
-    return 1 if (($user eq "foo") && ($pass eq "bar"));
-    return 0;
-}
-
-
-=head1 METHODS
-
-=head2 new( %cfg )
-
-Creates a new IO::Socket::Socks object.  It takes the following
-config hash:
-
-  ProxyAddr => Hostname of the proxy
-
-  ProxyPort => Port of the proxy
-  
-  ConnectAddr => Hostname of the remote machine
-
-  ConnectPort => Port of the remote machine
-
-  AuthType => What kind of authentication to support:
-                none       - no authentication (default)
-                userpass  - Username/Password
-
-  RequireAuth => Do not send, or accept, ANON as a valid
-                 auth mechanism.
-
-  UserAuth => Function that takes ($user,$pass) and returns
-              1 if they are allowed, 0 otherwise.
-
-  Username => If AuthType is set to userpass, then you must
-              provide a username.
-
-  Password => If AuthType is set to userpass, then you must
-              provide a password.
-              
-  SocksDebug => This will cause all of the SOCKS traffic to
-                be presented on the command line in a form
-                similar to the tables in the RFCs.
-
-  Listen => 0 or 1.  Listen on the ProxyAddr and ProxyPort
-            for incoming connections.
-
-=head2 accept( )
-
-Accept an incoming connection and return a new IO::Socket::Socks
-object that represents that connection.  You must call command()
-on this to find out what the incoming connection wants you to do,
-and then call command_reply() to send back the reply.
-
-=head2 command( )
-
-After you call accept() the client has sent the command they want
-you to process.  This function returns a reference to an array with
-the following format:
-
-  [ COMMAND, HOST, PORT ]
-
-=head2 command_reply( REPLY CODE, HOST, PORT )
-
-After you call command() the client needs to be told what the result
-is.  The REPLY CODE is as follows (integer value):
-
-  0: Success
-  1: General Failure
-  2: Connection Not Allowed
-  3: Network Unreachable
-  4: Host Unreachable
-  5: Connection Refused
-  6: TTL Expired
-  7: Command Not Supported
-  8: Address Not Supported
-
-HOST and PORT are the resulting host and port that you use for the
-command.
-
-=head1 VARIABLES
-
-=head2 $SOCKS_ERROR
-
-This scalar behaves like $! in that if undef is returned, this variable
-should contain a string reason for the error.
-
-=head1 AUTHOR
-
-Ryan Eatmon
-
-=head1 COPYRIGHT
-
-This module is free software, you can redistribute it and/or modify
-it under the same terms as Perl itself.
-
-=cut
-
-#XXX document socks5 rfcs
-#XXX document SOCKS_ERROR
-
 use strict;
 use IO::Socket;
+use IO::Select;
+use Errno qw(EWOULDBLOCK);
 use Carp;
 use base qw( IO::Socket::INET );
 use vars qw(@ISA @EXPORT $VERSION %CODES );
@@ -898,12 +725,93 @@ sub command_reply
 #| Helper Functions
 #+-----------------------------------------------------------------------------
 ###############################################################################
+sub _socks_send
+{
+    my $self = shift;
+    my $data = shift;
+    
+    my $blocking = $self->blocking(0) if(${*$self}{io_socket_timeout})
+    
+    my $selector = IO::Select->new($self);
+    my $start = time();
+    my $writed = 0;
+    my $rc;
+    while(!${*$self}{io_socket_timeout} || time() - $start < ${*$self}{io_socket_timeout})
+    {
+        unless($selector->can_write(1))
+        { # socket couldn't accept data for now, check if timeout expired and try again
+            next;
+        }
+
+        $rc = $self->syswrite($data);
+        if($rc > 0)
+        { # reduce our message
+            $writed += $rc;
+            substr($data, 0, $rc) = '';
+            if(length($data) == 0)
+            { # all data successfully writed
+                last;
+            }
+        }
+        elsif($! != EWOULDBLOCK)
+        { # some error in the socket; will return false
+            last;
+        }
+    }
+
+    $self->blocking(1) if $blocking;
+    
+    return $writed;
+}
+
+sub _socks_read
+{
+    my $self = shift;
+    my $length = shift || 1;
+    
+    my $selector = IO::Select->new($self);
+    my $start = time();
+    my ($buf, $data, $rc);
+
+    while($length > 0 && (!${*$self}{io_socket_timeout} || time() - $start < ${*$self}{io_socket_timeout}))
+    {
+        unless($selector->can_read(1))
+        { # no data in socket for now, check if timeout expired and try again
+            next;
+        }
+
+        $rc = $socket->sysread($buf, $length);
+        if(defined($rc))
+        { # no errors
+            if($rc > 0)
+            { # reduce limit and modify buffer
+                $length -= $rc;
+                $data .= $buf;
+                if($length == 0)
+                { # all data successfully readed
+                    last;
+                }
+            }
+            else
+            { # EOF in the socket
+                last;
+            }
+        }
+        elsif($! != EWOULDBLOCK) 
+        { # unknown error in the socket
+            last;
+        }
+    }
+    
+    return $data;
+}
 
 ###############################################################################
 #
 # _socks_read - send over the socket after packing according to the rules.
 #
 ###############################################################################
+=pod
 sub _socks_send
 {
     my $self = shift;
@@ -911,7 +819,7 @@ sub _socks_send
     
     $data = pack("C",$data);
     $self->_socks_send_raw($data);
-} 
+}
 
 
 ###############################################################################
@@ -960,7 +868,7 @@ sub _socks_read_raw
     $self->sysread($data,$length);
     return $data;
 }
-
+=cut
 
 
 
@@ -1170,3 +1078,180 @@ sub _debug_command_reply
 
 
 1;
+
+__END__
+
+=head1 NAME
+
+IO::Socket::Socks
+
+=head1 SYNOPSIS
+
+Provides a way to open a connection to a SOCKS v5 proxy and use the object
+just like an IO::Socket.
+
+=head1 DESCRIPTION
+
+IO::Socket::Socks connects to a SOCKS v5 proxy, tells it to open a
+connection to a remote host/port when the object is created.  The
+object you receive can be used directly as a socket for sending and
+receiving data from the remote host.
+
+=head1 EXAMPLES
+
+=head2 Client
+
+use IO::Socket::Socks;
+
+my $socks = new IO::Socket::Socks(ProxyAddr=>"proxy host",
+                                  ProxyPort=>"proxy port",
+                                  ConnectAddr=>"remote host",
+                                  ConnectPort=>"remote port",
+                                 );
+
+print $socks "foo\n";
+
+$socks->close();
+
+=head2 Server
+
+use IO::Socket::Socks;
+
+my $socks_server = new IO::Socket::Socks(ProxyAddr=>"localhost",
+                                         ProxyPort=>"8000",
+                                         Listen=>1,
+                                         UserAuth=>\&auth,
+                                         RequireAuth=>1
+                                        );
+
+my $select = new IO::Select($socks_server);
+        
+while(1)
+{
+    if ($select->can_read())
+    {
+        my $client = $socks_server->accept();
+
+        if (!defined($client))
+        {
+            print "ERROR: $SOCKS_ERROR\n";
+            next;
+        }
+
+        my $command = $client->command();
+        if ($command->[0] == 1)  # CONNECT
+        {
+            # Handle the CONNECT
+            $client->command_reply(0, addr, port);
+        }
+        
+        ...
+        #read from the client and send to the CONNECT address
+        ...
+
+        $client->close();
+    }
+}
+        
+
+sub auth
+{
+    my $user = shift;
+    my $pass = shift;
+
+    return 1 if (($user eq "foo") && ($pass eq "bar"));
+    return 0;
+}
+
+
+=head1 METHODS
+
+=head2 new( %cfg )
+
+Creates a new IO::Socket::Socks object.  It takes the following
+config hash:
+
+  ProxyAddr => Hostname of the proxy
+
+  ProxyPort => Port of the proxy
+  
+  ConnectAddr => Hostname of the remote machine
+
+  ConnectPort => Port of the remote machine
+
+  AuthType => What kind of authentication to support:
+                none       - no authentication (default)
+                userpass  - Username/Password
+
+  RequireAuth => Do not send, or accept, ANON as a valid
+                 auth mechanism.
+
+  UserAuth => Function that takes ($user,$pass) and returns
+              1 if they are allowed, 0 otherwise.
+
+  Username => If AuthType is set to userpass, then you must
+              provide a username.
+
+  Password => If AuthType is set to userpass, then you must
+              provide a password.
+              
+  SocksDebug => This will cause all of the SOCKS traffic to
+                be presented on the command line in a form
+                similar to the tables in the RFCs.
+
+  Listen => 0 or 1.  Listen on the ProxyAddr and ProxyPort
+            for incoming connections.
+
+=head2 accept( )
+
+Accept an incoming connection and return a new IO::Socket::Socks
+object that represents that connection.  You must call command()
+on this to find out what the incoming connection wants you to do,
+and then call command_reply() to send back the reply.
+
+=head2 command( )
+
+After you call accept() the client has sent the command they want
+you to process.  This function returns a reference to an array with
+the following format:
+
+  [ COMMAND, HOST, PORT ]
+
+=head2 command_reply( REPLY CODE, HOST, PORT )
+
+After you call command() the client needs to be told what the result
+is.  The REPLY CODE is as follows (integer value):
+
+  0: Success
+  1: General Failure
+  2: Connection Not Allowed
+  3: Network Unreachable
+  4: Host Unreachable
+  5: Connection Refused
+  6: TTL Expired
+  7: Command Not Supported
+  8: Address Not Supported
+
+HOST and PORT are the resulting host and port that you use for the
+command.
+
+=head1 VARIABLES
+
+=head2 $SOCKS_ERROR
+
+This scalar behaves like $! in that if undef is returned, this variable
+should contain a string reason for the error.
+
+=head1 AUTHOR
+
+Ryan Eatmon
+
+=head1 COPYRIGHT
+
+This module is free software, you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut
+
+#XXX document socks5 rfcs
+#XXX document SOCKS_ERROR
