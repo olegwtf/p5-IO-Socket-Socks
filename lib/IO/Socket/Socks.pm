@@ -1,4 +1,4 @@
-##############################################################################
+5##############################################################################
 #
 #  This library is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU Library General Public
@@ -31,7 +31,7 @@ require Exporter;
 @ISA = qw(Exporter IO::Socket::INET);
 @EXPORT = qw( $SOCKS_ERROR );
 
-$VERSION = "0.1";
+$VERSION = "0.2";
 our $SOCKS_ERROR;
 
 use constant SOCKS5_VER =>  5;
@@ -283,42 +283,47 @@ sub _socks5_connect
     #--------------------------------------------------------------------------
     # Send the auth mechanisms
     #--------------------------------------------------------------------------
-    my %connect;
-    $connect{version} = SOCKS5_VER;
+    my $nmethods = 0;
+    my $methods;
     my @methods;
     foreach my $method (0..$#{${*$self}->{SOCKS}->{AuthMethods}})
     {
-        push(@methods,$method)
-            if (${*$self}->{SOCKS}->{AuthMethods}->[$method] == 1);
+        if (${*$self}->{SOCKS}->{AuthMethods}->[$method] == 1)
+        {
+            $methods .= pack('C', $method);
+            $nmethods++;
+        }
     }
-    $connect{num_methods} = $#methods + 1;
-    $connect{methods} = \@methods;
     
-    $self->_debug_connect("Send",\%connect);
+    #$self->_debug_connect("Send",\%connect);
 
-    $self->_socks_send($connect{version});
-    $self->_socks_send($connect{num_methods});
-    foreach my $method (@{$connect{methods}})
+    unless( $self->_socks_send( pack('CC', 5, $nmethods) . $methods) )
     {
-        $self->_socks_send($method);
+        $SOCKS_ERROR = 'Timeout';
+        return;
     }
 
     #--------------------------------------------------------------------------
     # Read the reply
     #--------------------------------------------------------------------------
-    my %connect_reply;
-    $connect_reply{version} = $self->_socks_read();
-    $connect_reply{auth_method} = $self->_socks_read();
-
-    $self->_debug_connect_reply("Recv",\%connect_reply);
-    
-    if ($connect_reply{auth_method} == AUTHMECH_INVALID)
+    my $reply = $self->_socks_read(2);
+    unless($reply)
     {
-        $SOCKS_ERROR = $CODES{AUTHMECH}->[$connect_reply{auth_method}];
+        $SOCKS_ERROR = 'Timeout';
+        return;
+    }
+    
+    my ($version, $auth_method) = unpack('CC', split(//, $reply));
+
+    #$self->_debug_connect_reply("Recv",\%connect_reply);
+    
+    if ($auth_method == AUTHMECH_INVALID)
+    {
+        $SOCKS_ERROR = $CODES{AUTHMECH}->[$auth_method];
         return;
     }
 
-    return $connect_reply{auth_method};
+    return $auth_method;
 }
 
 
@@ -334,24 +339,16 @@ sub _socks5_connect_auth
     #--------------------------------------------------------------------------
     # Send the auth
     #--------------------------------------------------------------------------
-    my %auth;
-    $auth{version} = 1;
-    $auth{user_length} = length(${*$self}->{SOCKS}->{Username});
-    $auth{user} = ${*$self}->{SOCKS}->{Username};
-    $auth{pass_length} = length(${*$self}->{SOCKS}->{Password});
-    $auth{pass} = ${*$self}->{SOCKS}->{Password};
-    
-    $self->_debug_auth("Send",\%auth);
-        
-    $self->_socks_send($auth{version});
-    $self->_socks_send($auth{user_length});
-    $self->_socks_send_raw($auth{user});
-    $self->_socks_send($auth{pass_length});
-    $self->_socks_send_raw($auth{pass});
+    unless( $self->_socks_send(pack('CC', 1, length(${*$self}->{SOCKS}->{Username})) . ${*$self}->{SOCKS}->{Username} . pack('C', length(${*$self}->{SOCKS}->{Password})) . length(${*$self}->{SOCKS}->{Password})) )
+    {
+        $SOCKS_ERROR = 'Timeout';
+        return;
+    }
     
     #--------------------------------------------------------------------------
     # Read the reply
     #--------------------------------------------------------------------------
+    my $reply = unpack('CC', split(//, $reply));
     my %auth_reply;
     $auth_reply{version} = $self->_socks_read();
     $auth_reply{status} = $self->_socks_read();
