@@ -1,4 +1,4 @@
-5##############################################################################
+##############################################################################
 #
 #  This library is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU Library General Public
@@ -339,7 +339,9 @@ sub _socks5_connect_auth
     #--------------------------------------------------------------------------
     # Send the auth
     #--------------------------------------------------------------------------
-    unless( $self->_socks_send(pack('CC', 1, length(${*$self}->{SOCKS}->{Username})) . ${*$self}->{SOCKS}->{Username} . pack('C', length(${*$self}->{SOCKS}->{Password})) . length(${*$self}->{SOCKS}->{Password})) )
+    my $username = ${*$self}->{SOCKS}->{Username};
+    my $password = ${*$self}->{SOCKS}->{Password};
+    unless( $self->_socks_send(pack('CC', 1, length($username)) . $username . pack('C', length($password)) . length($password)) )
     {
         $SOCKS_ERROR = 'Timeout';
         return;
@@ -348,14 +350,18 @@ sub _socks5_connect_auth
     #--------------------------------------------------------------------------
     # Read the reply
     #--------------------------------------------------------------------------
-    my $reply = unpack('CC', split(//, $reply));
-    my %auth_reply;
-    $auth_reply{version} = $self->_socks_read();
-    $auth_reply{status} = $self->_socks_read();
-    
-    $self->_debug_auth_reply("Recv",\%auth_reply);
-        
-    if ($auth_reply{status} != AUTHREPLY_SUCCESS)
+    my $reply = $self->_socks_read(2);
+    unless($reply)
+    {
+       	$SOCKS_ERROR = 'Timeout';
+       	return;
+    }
+
+    my ($version, $status) = unpack('CC', split(//, $reply));
+
+    #$self->_debug_auth_reply("Recv",\%auth_reply);
+
+    if ($status != AUTHREPLY_SUCCESS)
     {
         $SOCKS_ERROR = "Authentication failed with SOCKS5 proxy.";
         return;
@@ -378,6 +384,7 @@ sub _socks5_connect_command
     #--------------------------------------------------------------------------
     # Send the command
     #--------------------------------------------------------------------------
+    $self->_socks_send(pack('CC', 5, $command, ));
     my %command;
     $command{version} = SOCKS5_VER;
     $command{command} = $command;
@@ -387,7 +394,7 @@ sub _socks5_connect_command
     $command{host} = ${*$self}->{SOCKS}->{ConnectAddr};
     $command{port} = ${*$self}->{SOCKS}->{ConnectPort};
 
-    $self->_debug_command("Send",\%command);
+    #$self->_debug_command("Send",\%command);
         
     $self->_socks_send($command{version});
     $self->_socks_send($command{command});
