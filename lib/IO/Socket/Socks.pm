@@ -279,10 +279,17 @@ sub connect
 sub _socks5_connect
 {
     my $self = shift;
+    my $debug = IO::Socket::Socks::Debug->new();
 
     #--------------------------------------------------------------------------
     # Send the auth mechanisms
     #--------------------------------------------------------------------------
+    # +----+----------+----------+
+    # |VER | NMETHODS | METHODS  |
+    # +----+----------+----------+
+    # | 1  |    1     | 1 to 255 |
+    # +----+----------+----------+
+    
     my $nmethods = 0;
     my $methods;
     my @methods;
@@ -295,17 +302,30 @@ sub _socks5_connect
         }
     }
     
-    #$self->_debug_connect("Send",\%connect);
-
     unless( $self->_socks_send( pack('CC', 5, $nmethods) . $methods) )
     {
         $SOCKS_ERROR = 'Timeout';
         return;
     }
+    
+    
+    if(${*$self}->{SOCKS}->{Debug})
+    {
+        $debug->add(ver => 5);
+        $debug->add(nmethods => $nmethods);
+        $debug->add(methods => join('', unpack('C'x$nmethods, $methods)));
+        $debug->show('Send: ');
+    }
 
     #--------------------------------------------------------------------------
     # Read the reply
     #--------------------------------------------------------------------------
+    # +----+--------+
+    # |VER | METHOD |
+    # +----+--------+
+    # | 1  |   1    |
+    # +----+--------+
+    
     my $reply = $self->_socks_read(2);
     unless($reply)
     {
@@ -313,9 +333,14 @@ sub _socks5_connect
         return;
     }
     
-    my ($version, $auth_method) = unpack('CC', split(//, $reply));
+    my ($version, $auth_method) = unpack('CC', $reply);
 
-    #$self->_debug_connect_reply("Recv",\%connect_reply);
+    if(${*$self}->{SOCKS}->{Debug})
+    {
+        $debug->add(ver => $version);
+        $debug->add(method => $auth_method);
+        $debug->show('Recv: ');
+    }
     
     if ($auth_method == AUTHMECH_INVALID)
     {
@@ -326,7 +351,7 @@ sub _socks5_connect
     return $auth_method;
 }
 
-
+=pod
 ###############################################################################
 #
 # _socks5_connect_auth - Send and receive a SOCKS5 auth handshake
@@ -369,7 +394,7 @@ sub _socks5_connect_auth
 
     return 1;
 }
-
+=cut
 
 ###############################################################################
 #
@@ -380,46 +405,67 @@ sub _socks5_connect_command
 {
     my $self = shift;
     my $command = shift;
+    my $debug = IO::Socket::Socks::Debug->new();
 
     #--------------------------------------------------------------------------
     # Send the command
     #--------------------------------------------------------------------------
-    $self->_socks_send(pack('CC', 5, $command, ));
-    my %command;
-    $command{version} = SOCKS5_VER;
-    $command{command} = $command;
-    $command{reserved} = 0;
-    $command{atype} = ADDR_DOMAINNAME;
-    $command{host_length} = length(${*$self}->{SOCKS}->{ConnectAddr});
-    $command{host} = ${*$self}->{SOCKS}->{ConnectAddr};
-    $command{port} = ${*$self}->{SOCKS}->{ConnectPort};
+    # +----+-----+-------+------+----------+----------+
+    # |VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
+    # +----+-----+-------+------+----------+----------+
+    # | 1  |  1  | X'00' |  1   | Variable |    2     |
+    # +----+-----+-------+------+----------+----------+
+    
+    my $atype = 1;
+    my $dstaddr = inet_aton(${*$self}->{SOCKS}->{ConnectAddr});
+    my $dstport = pack('n', ${*$self}->{SOCKS}->{ConnectPort});
+    unless($self->_socks_send(pack('CCCC', 5, $command, 0, 1) . $dstaddr . $dstport))
+    {
+        $SOCKS_ERROR = 'Timeout';
+       	return;
+    }
 
-    #$self->_debug_command("Send",\%command);
-        
-    $self->_socks_send($command{version});
-    $self->_socks_send($command{command});
-    $self->_socks_send($command{reserved});
-    $self->_socks_send($command{atype});
-    $self->_socks_send($command{host_length});
-    $self->_socks_send_raw($command{host});
-    $self->_socks_send_raw(pack("n",$command{port}));
-
+    if(${*$self}->{SOCKS}->{Debug})
+    {
+        $debug->add(ver => 5);
+        $debug->add(cmd => $command);
+        $debug->add(rsv => 0);
+        $debug->add(atyp => 1);
+        $debug->add(dstaddr => inet_ntoa($dstaddr));
+        $debug->add(dstport => ${*$self}->{SOCKS}->{ConnectPort});
+        $debug->show('Send: ');
+    }
+=pod    
     #--------------------------------------------------------------------------
     # Read the reply
     #--------------------------------------------------------------------------
-    my %command_reply;
-    $command_reply{version} = $self->_socks_read();
-    $command_reply{status} = $self->_socks_read();
-    
-    if ($command_reply{status} == REPLY_SUCCESS)
+    my $reply = $self->_socks_read(4);
+    unless($reply)
     {
-        $command_reply{reserved} = $self->_socks_read();
-        $command_reply{atype} = $self->_socks_read();
-
-        if ($command_reply{atype} == ADDR_DOMAINNAME)
+       	$SOCKS_ERROR = 'Timeout';
+       	return;
+    }
+    
+    my ($status, $atype) = unpack('CC', (split(//, $reply))[1,3]);
+    
+    if ($status == REPLY_SUCCESS)
+    {
+        if ($type == ADDR_DOMAINNAME)
         {
-            $command_reply{host_length} = $self->_socks_read();
-            $command_reply{host} = $self->_socks_read_raw($command_reply{host_length});
+            $reply = $self-_socks_read();
+            unless($reply)
+            {
+               	$SOCKS_ERROR = 'Timeout';
+               	return;
+            }
+            
+            my $host_length = unpack('C', $reply);
+            my $host = $self->_socks_read($host_length);
+            unless($host)
+            {
+                $SOCKS_ERROR = 'Timeout';
+               	return;
+            }
         }
         elsif ($command_reply{atype} == ADDR_IPV4)
         {
@@ -429,19 +475,19 @@ sub _socks5_connect_command
         $command_reply{port} = unpack("n",$self->_socks_read_raw(2));
     }
     
-    $self->_debug_command_reply("Recv",\%command_reply);
+    #$self->_debug_command_reply("Recv",\%command_reply);
         
-    if ($command_reply{status} != REPLY_SUCCESS)
+    if ($status != REPLY_SUCCESS)
     {
         $SOCKS_ERROR = $CODES{REPLY}->[$command_reply{status}];
         return;
     }
-
+=cut
     return 1;
 }
     
 
-
+=pod
 
 ###############################################################################
 #+-----------------------------------------------------------------------------
@@ -721,7 +767,7 @@ sub command_reply
 }
 
 
-
+=cut
 
 
 ###############################################################################
@@ -734,7 +780,7 @@ sub _socks_send
     my $self = shift;
     my $data = shift;
     
-    my $blocking = $self->blocking(0) if(${*$self}{io_socket_timeout})
+    my $blocking = $self->blocking(0) if(${*$self}{io_socket_timeout});
     
     my $selector = IO::Select->new($self);
     my $start = time();
@@ -784,7 +830,7 @@ sub _socks_read
             next;
         }
 
-        $rc = $socket->sysread($buf, $length);
+        $rc = $self->sysread($buf, $length);
         if(defined($rc))
         { # no errors
             if($rc > 0)
@@ -810,276 +856,81 @@ sub _socks_read
     return $data;
 }
 
-###############################################################################
-#
-# _socks_read - send over the socket after packing according to the rules.
-#
-###############################################################################
-=pod
-sub _socks_send
+
+
+package IO::Socket::Socks::Debug;
+
+sub new
 {
-    my $self = shift;
-    my $data = shift;
+    my ($class) = @_;
     
-    $data = pack("C",$data);
-    $self->_socks_send_raw($data);
-}
-
-
-###############################################################################
-#
-# _socks_send_raw - send raw data across the socket.
-#
-###############################################################################
-sub _socks_send_raw
-{
-    my $self = shift;
-    my $data = shift;
-
-    $self->syswrite($data,length($data));
-}
-
-
-###############################################################################
-#
-# _socks_read - read from the socket, and then unpack according to the rules.
-#
-###############################################################################
-sub _socks_read
-{
-    my $self = shift;
-    my $length = shift;
-    $length = 1 unless defined($length);
+    my $self = {};
+    $self->{data} = [];
     
-    my $data = $self->_socks_read_raw($length);
-    $data = unpack("C",$data);
-    return $data;
+    bless $self, $class;
 }
 
-
-###############################################################################
-#
-# _socks_read_raw - read raw bytes off of the socket
-#
-###############################################################################
-sub _socks_read_raw
+sub add
 {
-    my $self = shift;
-    my $length = shift;
-    $length = 1 unless defined($length);
-
-    my $data;
-    $self->sysread($data,$length);
-    return $data;
+    my ($self, $name, $value) = @_;
+    push @{$self->{data}}, $name, $value;
 }
-=cut
 
-
-
-###############################################################################
-#+-----------------------------------------------------------------------------
-#| Debug Functions
-#+-----------------------------------------------------------------------------
-###############################################################################
-
-sub _debug_connect
+sub show
 {
-    my $self = shift;
+    my ($self, $tag) = @_;
+    
+    _separator($self->{data}, $tag);
+    _row($self->{data}, 0, $tag);
+    _separator($self->{data}, $tag);
+    _row($self->{data}, 1, $tag);
+    _separator($self->{data}, $tag);
+    
+    print "\n";
+    
+    @{$self->{data}} = ();
+}
+
+sub _separator
+{
+    my $ref = shift;
     my $tag = shift;
-    my $connect = shift;
-
-    return unless ${*$self}->{SOCKS}->{Debug};
-
-    print "$tag: +------+------+-","-"x(4*$connect->{num_methods}),"-+\n";
-    print "$tag: | Vers | Auth |";
-    if ($connect->{num_methods} > 0)
+    my ($row1_len, $row2_len, $len);
+    
+    print $tag, '+';
+    
+    for(my $i=0; $i<@$ref; $i+=2)
     {
-        print " Meth "," "x(4*($connect->{num_methods}-1)),"|\n";
-    }
-    print "$tag: +------+------+-","-"x(4*$connect->{num_methods}),"-+\n";
-
-    print "$tag: | ";
-    printf("\\%02X",$connect->{version});
-    print "  | ";
-    printf("\\%02X",$connect->{num_methods});
-    print "  | ";
-    if ($connect->{num_methods} > 0)
-    {
-        foreach my $method (@{$connect->{methods}})
-        {
-            printf("\\%02X ",$method);
-        }
-        print " |";
+        $row1_len = length($ref->[$i]);
+        $row2_len = length($ref->[$i+1]);
+        $len = ($row1_len > $row2_len ? $row1_len : $row2_len)+2;
+        
+        print '-' x $len, '+';
     }
     
     print "\n";
-    print "$tag: +------+------+-","-"x(4*$connect->{num_methods}),"-+\n";
-    print "\n";
 }
 
-
-sub _debug_connect_reply
+sub _row
 {
-    my $self = shift;
+    my $ref = shift;
+    my $row = shift;
     my $tag = shift;
-    my $connect_reply = shift;
+    my ($row1_len, $row2_len, $len);
     
-    return unless ${*$self}->{SOCKS}->{Debug};
-
-    print "$tag: +------+------+\n";
-    print "$tag: | Vers | Auth |\n";
-    print "$tag: +------+------+\n";
-    print "$tag: | ";
+    print $tag, '|';
     
-    printf("\\%02X",$connect_reply->{version});
-    print "  | ";
-    printf("\\%02X",$connect_reply->{auth_method});
-    print "  |\n";
-
-    print "$tag: +------+------+\n";
-    print "\n";
-}
-
-
-sub _debug_auth
-{
-    my $self = shift;
-    my $tag = shift;
-    my $auth = shift;
-
-    return unless ${*$self}->{SOCKS}->{Debug};
-
-    print "$tag: +------+------+------","-"x($auth->{user_length}-4),"+------+-----","-"x($auth->{pass_length}-4),"-+\n";
-    print "$tag: | Vers | UsrL | User "," "x($auth->{user_length}-4),"| PasL | Pass"," "x($auth->{pass_length}-4)," |\n";
-    print "$tag: +------+------+------","-"x($auth->{user_length}-4),"+------+-----","-"x($auth->{pass_length}-4),"-+\n";
-    print "$tag: | ";
-
-    printf("\\%02X",$auth->{version});
-    print "  | ";
-    printf("\\%02d",$auth->{user_length});
-    print "  | ";
-    print $auth->{user}," "x(4-$auth->{user_length});
-    print " | ";
-    printf("\\%02d",$auth->{pass_length});
-    print "  | ";
-    print $auth->{pass}," "x(4-$auth->{pass_length});
-
-    print " |\n";
-    print "$tag: +------+------+------","-"x($auth->{user_length}-4),"+------+-----","-"x($auth->{pass_length}-4),"-+\n";
-    print "\n";
-}  
-
-
-sub _debug_auth_reply
-{
-    my $self = shift;
-    my $tag = shift;
-    my $auth_reply = shift;
-    
-    return unless ${*$self}->{SOCKS}->{Debug};
-
-    print "$tag: +------+------+\n";
-    print "$tag: | Vers | Stat |\n";
-    print "$tag: +------+------+\n";
-    print "$tag: | ";
-    
-    printf("\\%02X",$auth_reply->{version});
-    print "  | ";
-    printf("\\%02X",$auth_reply->{status});
-    print "  |\n";
-
-    print "$tag: +------+------+\n";
-    print "\n";
-}
-
-
-sub _debug_command
-{
-    my $self = shift;
-    my $tag = shift;
-    my $command = shift;
-
-    return unless ${*$self}->{SOCKS}->{Debug};
-
-    print "$tag: +------+------+------+------+-------","-"x$command->{host_length},"-+-------+\n";
-    print "$tag: | Vers | Comm | Resv | ATyp | Host  "," "x$command->{host_length}," | Port  |\n";
-    print "$tag: +------+------+------+------+-------","-"x$command->{host_length},"-+-------+\n";
-    print "$tag: | "; 
-
-    printf("\\%02X",$command->{version});
-    print "  | ";
-    printf("\\%02X",$command->{command});
-    print "  | ";
-    printf("\\%02X",$command->{reserved});
-    print "  | ";
-    printf("\\%02X",$command->{atype});
-    print "  | ";
-    printf("\\%02d",$command->{host_length});
-    print " - ";
-    print $command->{host};
-    print " | ";
-    printf("%-5d",$command->{port});
-
-    print " |\n";
-    print "$tag: +------+------+------+------+-------","-"x$command->{host_length},"-+-------+\n";
-    print "\n";
-}
-
-
-sub _debug_command_reply
-{
-    my $self = shift;
-    my $tag = shift;
-    my $command_reply = shift;
-
-    return unless ${*$self}->{SOCKS}->{Debug};
-
-    print "$tag: +------+------+";
-    print "------+------+-------","-"x$command_reply->{host_length},"-+-------+"
-        if ($command_reply->{status} == 0);
-    print "\n";
-
-    print "$tag: | Vers | Stat |";
-    print " Resv | ATyp | Host  "," "x$command_reply->{host_length}," | Port  |"
-        if ($command_reply->{status} == 0);
-    print "\n";
-
-    print "$tag: +------+------+";
-    print "------+------+-------","-"x$command_reply->{host_length},"-+-------+"
-        if ($command_reply->{status} == 0);
-    print "\n";
-    
-    print "$tag: | "; 
-
-    printf("\\%02X",$command_reply->{version});
-    print "  | ";
-    printf("\\%02X",$command_reply->{status});
-    if ($command_reply->{status} == 0)
+    for(my $i=0; $i<@$ref; $i+=2)
     {
-        print "  | ";
-        printf("\\%02X",$command_reply->{reserved});
-        print "  | ";
-        printf("\\%02X",$command_reply->{atype});
-        print "  | ";
-        printf("\\%02d",$command_reply->{host_length});
-        print " - ";
-        print $command_reply->{host};
-        print " | ";
-        printf("%-5d",$command_reply->{port});
+        $row1_len = length($ref->[$i]);
+        $row2_len = length($ref->[$i+1]);
+        $len = ($row1_len > $row2_len ? $row1_len : $row2_len);
+        
+        printf(' %-'.$len.'s |', $ref->[$i+$row]);
     }
-    else
-    {
-        print " ";
-    }
-    print " |\n";
     
-    print "$tag: +------+------+";
-    print "------+------+-------","-"x$command_reply->{host_length},"-+-------+"
-        if ($command_reply->{status} == 0);
-    print "\n";
     print "\n";
 }
-
 
 1;
 
