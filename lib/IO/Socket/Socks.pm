@@ -667,16 +667,23 @@ sub accept
         $SOCKS_ERROR = "Proxy accept new client failed.";
         return;
     }
-
-    my $authmech = $self->_socks5_accept($client);
-    return unless defined($authmech);
-
-    if ($authmech == AUTHMECH_USERPASS)
+    
+    if(${*$self}->{SOCKS}->{Version} == 4)
     {
-        return unless $self->_socks5_accept_auth($client);
+        return unless $self->_socks4_accept($client);
     }
+    else
+    {
+        my $authmech = $self->_socks5_accept($client);
+        return unless defined($authmech);
 
-    return unless $self->_socks5_accept_command($client);
+        if ($authmech == AUTHMECH_USERPASS)
+        {
+            return unless $self->_socks5_accept_auth($client);
+        }
+
+        return unless $self->_socks5_accept_command($client);
+    }
 
     # inherit debug level for new socket
     ${*$client}->{SOCKS}->{Debug} = ${*$self}->{SOCKS}->{Debug};
@@ -982,6 +989,43 @@ sub _socks5_accept_command_reply
         $debug->add(bndaddr => $SOCKS5_RESOLVE ? $bndaddr : inet_ntoa($bndaddr));
         $debug->add(bndport => $port);
         $debug->show('Send: ');
+    }
+}
+
+
+###############################################################################
+#
+# _socks4_accept - Wait for an opening handsake, and reply.
+#
+###############################################################################
+sub _socks4_accept
+{
+    my $self = shift;
+    my $client = shift;
+    my $debug = IO::Socket::Socks::Debug->new() if(${*$self}->{SOCKS}->{Debug});
+
+    #--------------------------------------------------------------------------
+    # Read the auth mechanisms
+    #--------------------------------------------------------------------------
+    # +-----+-----+----------+---------------+----------+------+   
+    # | VER | CMD | DST.PORT |   DST.ADDR    |  USERID  | NULL |
+    # +-----+-----+----------+---------------+----------+------+
+    # |  1  |  1  |    2     |       4       | variable |  1   |
+    # +-----+-----+----------+---------------+----------+------+        
+    
+    my $request = $client->_socks_read(8)
+        or return _timeout();
+    
+    my ($ver, $cmd, $dstport) = unpack('CCn', $request);
+    my $dstaddr = inet_ntoa( substr($request, 4) );
+    
+    my $userid = '';
+    my $c;
+    
+    while(1)
+    {
+        $c = $client->_socks_read()
+            or return _timeout(); # c == 0 ????
     }
 }
 
