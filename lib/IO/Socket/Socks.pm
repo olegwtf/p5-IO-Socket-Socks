@@ -35,8 +35,10 @@ require Exporter;
 $VERSION = "0.2";
 our $SOCKS_ERROR;
 our $SOCKS5_RESOLVE = 1;
+our $SOCKS4_RESOLVE = 0;
 
 use constant SOCKS5_VER =>  5;
+use constant SOCKS4_VER =>  4;
 
 use constant ADDR_IPV4       => 1;
 use constant ADDR_DOMAINNAME => 3;
@@ -58,6 +60,7 @@ use constant AUTHREPLY_FAILURE  => 1;
 
 $CODES{AUTHREPLY}->[AUTHREPLY_FAILURE] = "Failed to authenticate";
 
+# socks5
 use constant REPLY_SUCCESS             => 0;
 use constant REPLY_GENERAL_FAILURE     => 1;
 use constant REPLY_CONN_NOT_ALLOWED    => 2;
@@ -68,16 +71,27 @@ use constant REPLY_TTL_EXPIRED         => 6;
 use constant REPLY_CMD_NOT_SUPPORTED   => 7;
 use constant REPLY_ADDR_NOT_SUPPORTED  => 8;
 
-$CODES{REPLY}->[REPLY_SUCCESS] = "Success";
-$CODES{REPLY}->[REPLY_GENERAL_FAILURE] = "General failure";
-$CODES{REPLY}->[REPLY_CONN_NOT_ALLOWED] = "Not allowed";
-$CODES{REPLY}->[REPLY_NETWORK_UNREACHABLE] = "Network unreachable";
-$CODES{REPLY}->[REPLY_HOST_UNREACHABLE] = "Host unreachable";
-$CODES{REPLY}->[REPLY_CONN_REFUSED] = "Connection refused";
-$CODES{REPLY}->[REPLY_TTL_EXPIRED] = "TTL expired";
-$CODES{REPLY}->[REPLY_CMD_NOT_SUPPORTED] = "Command not supported";
-$CODES{REPLY}->[REPLY_ADDR_NOT_SUPPORTED] = "Address not supported";
+$CODES{REPLY}->{&REPLY_SUCCESS} = "Success";
+$CODES{REPLY}->{&REPLY_GENERAL_FAILURE} = "General failure";
+$CODES{REPLY}->{&REPLY_CONN_NOT_ALLOWED} = "Not allowed";
+$CODES{REPLY}->{&REPLY_NETWORK_UNREACHABLE} = "Network unreachable";
+$CODES{REPLY}->{&REPLY_HOST_UNREACHABLE} = "Host unreachable";
+$CODES{REPLY}->{&REPLY_CONN_REFUSED} = "Connection refused";
+$CODES{REPLY}->{&REPLY_TTL_EXPIRED} = "TTL expired";
+$CODES{REPLY}->{&REPLY_CMD_NOT_SUPPORTED} = "Command not supported";
+$CODES{REPLY}->{&REPLY_ADDR_NOT_SUPPORTED} = "Address not supported";
 
+
+# socks4
+use constant REQUEST_GRANTED         => 90;
+use constant REQUEST_FAILED          => 91;
+use constant REQUEST_REJECTED_IDENTD => 92;
+use constant REQUEST_REJECTED_USERID => 93;
+
+$CODES{REPLY}->{&REQUEST_GRANTED} = "request granted";
+$CODES{REPLY}->{&REQUEST_FAILED} = "request rejected or failed";
+$CODES{REPLY}->{&REQUEST_REJECTED_IDENTD} = "request rejected becasue SOCKS server cannot connect to identd on the client";
+$CODES{REPLY}->{&REQUEST_REJECTED_USERID} = "request rejected because the client program and identd report different user-ids";
 
 #------------------------------------------------------------------------------
 # sub new is handled by IO::Socket::INET
@@ -93,6 +107,15 @@ sub configure
     my $self = shift;
     my $args = shift;
 
+    ${*$self}->{SOCKS}->{Version} =
+        (exists($args->{SocksVersion}) ?
+          ($args->{SocksVersion} == 4 || $args->{SocksVersion} == 5 ?
+            delete($args->{SocksVersion}) :
+            croak("Unsupported socks version specified. Should be 4 or 5")
+          ) :
+          5
+        );
+    
     ${*$self}->{SOCKS}->{ProxyAddr} =
         (exists($args->{ProxyAddr}) ?
          delete($args->{ProxyAddr}) :
@@ -242,6 +265,15 @@ sub connect
         return;
     }
 
+    #--------------------------------------------------------------------------
+    # If socks version is 4 it is more easily to establish connection
+    #--------------------------------------------------------------------------    
+    if(${*$self}->{SOCKS}->{Version} == 4)
+    {
+        return unless $self->_socks4_connect();
+        return $self;
+    }
+    
     #--------------------------------------------------------------------------
     # Handle any authentication
     #--------------------------------------------------------------------------
@@ -517,10 +549,94 @@ sub _socks5_connect_command
    
     if($rep != REPLY_SUCCESS)
     {
-        $SOCKS_ERROR = $CODES{REPLY}->[$rep];
+        $SOCKS_ERROR = $CODES{REPLY}->{$rep};
         return;
     }
 
+    return 1;
+}
+
+###############################################################################
+#
+# _socks4_connect - Send the opening handsake, and process the reply.
+#
+###############################################################################
+sub _socks4_connect
+{
+    # http://ss5.sourceforge.net/socks4.protocol.txt
+    # http://ss5.sourceforge.net/socks4A.protocol.txt
+    
+    my $self = shift;
+    my $debug = IO::Socket::Socks::Debug->new() if(${*$self}->{SOCKS}->{Debug});
+    
+    #--------------------------------------------------------------------------
+    # Send the command
+    #--------------------------------------------------------------------------
+    # +-----+-----+----------+---------------+----------+------+   
+    # | VER | CMD | DST.PORT |   DST.ADDR    |  USERID  | NULL |
+    # +-----+-----+----------+---------------+----------+------+
+    # |  1  |  1  |    2     |       4       | variable |  1   |
+    # +-----+-----+----------+---------------+----------+------+
+    
+    my $cmd = 1;
+    my $dstaddr = $SOCKS4_RESOLVE ? inet_aton('0.0.0.1') : inet_aton(${*$self}->{SOCKS}->{ConnectAddr});
+    my $dstport = pack('n', ${*$self}->{SOCKS}->{ConnectPort});
+    my $userid  = ${*$self}->{SOCKS}->{Username};
+    my $dsthost;
+    if($SOCKS4_RESOLVE)
+    { # socks4a
+        $dsthost = ${*$self}->{SOCKS}->{ConnectAddr} . pack('C', 0);
+    }
+    
+    $self->_socks_send(pack('CC', SOCKS4_VER, $cmd) . $dstport . $dstaddr . $userid . pack('C', 0) . $dsthost)
+        or return _timeout();
+        
+    if($debug)
+    {
+        $debug->add(ver => SOCKS4_VER);
+        $debug->add(cmd => $cmd);
+        $debug->add(dstport => ${*$self}->{SOCKS}->{ConnectPort});
+        $debug->add(dstaddr => inet_ntoa($dstaddr));
+        $debug->add(userid => $userid);
+        $debug->add(null => 0);
+        if($dsthost)
+        {
+            $debug->add(dsthost => ${*$self}->{SOCKS}->{ConnectAddr});
+            $debug->add(null => 0);
+        }
+        $debug->show('Send: ');
+    }
+    
+    #--------------------------------------------------------------------------
+    # Read the reply
+    #--------------------------------------------------------------------------
+    # +-----+-----+----------+---------------+
+    # | VER | REP | BND.PORT |   BND.ADDR    |
+    # +-----+-----+----------+---------------+
+    # |  1  |  1  |    2     |       4       |
+    # +-----+-----+----------+---------------+
+    
+    my $reply = $self->_socks_read(8)
+        or return _timeout();
+    
+    my ($ver, $rep, $bndport) = unpack('CCn', $reply);
+    if($debug)
+    {
+        my $bndaddr = inet_ntoa(substr($reply, 4));
+        
+        $debug->add(ver => $ver);
+        $debug->add(rep => $rep);
+        $debug->add(bndport => $bndport);
+        $debug->add(bndaddr => $bndaddr);
+        $debug->show('Recv: ');
+    }
+    
+    if($rep != REQUEST_GRANTED)
+    {
+        $SOCKS_ERROR = $CODES{REPLY}->{$rep};
+        return;
+    }
+    
     return 1;
 }
 
@@ -799,7 +915,7 @@ sub _socks5_accept_command
     else
     {
         $client->_socks5_accept_command_reply(REPLY_ADDR_NOT_SUPPORTED, '1.1.1.1', 1);
-        $SOCKS_ERROR = $CODES{REPLY}->[REPLY_ADDR_NOT_SUPPORTED];
+        $SOCKS_ERROR = $CODES{REPLY}->{REPLY_ADDR_NOT_SUPPORTED};
         return;
     }
     
