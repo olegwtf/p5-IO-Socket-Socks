@@ -1557,7 +1557,7 @@ If this variable have true value resolving of host names will be done
 by proxy server, otherwise resolving will be done locally. Resolving
 host by socks proxy version 4 is extension to the protocol also known
 as socks4a. So, only socks4a proxy  supports resolving of hostnames.
-Default value of this variable is false.
+Default value of this variable is false. This variable is not importable.
 
 =head2 $SOCKS5_RESOLVE
 
