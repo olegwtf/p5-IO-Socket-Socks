@@ -266,7 +266,7 @@ sub connect
     }
 
     #--------------------------------------------------------------------------
-    # If socks version is 4 it is more easily to establish connection
+    # If socks version is 4
     #--------------------------------------------------------------------------    
     if(${*$self}->{SOCKS}->{Version} == 4)
     {
@@ -275,6 +275,7 @@ sub connect
     }
     
     #--------------------------------------------------------------------------
+    # For socks5 version
     # Handle any authentication
     #--------------------------------------------------------------------------
     my $auth_mech = $self->_socks5_connect();
@@ -668,9 +669,13 @@ sub accept
         return;
     }
     
+    # inherit some socket parameters
+    ${*$client}->{SOCKS}->{Debug}   = ${*$self}->{SOCKS}->{Debug};
+    ${*$client}->{SOCKS}->{Version} = ${*$self}->{SOCKS}->{Version};
+    
     if(${*$self}->{SOCKS}->{Version} == 4)
     {
-        return unless $self->_socks4_accept($client);
+        return unless $self->_socks4_accept_command($client);
     }
     else
     {
@@ -685,9 +690,6 @@ sub accept
         return unless $self->_socks5_accept_command($client);
     }
 
-    # inherit debug level for new socket
-    ${*$client}->{SOCKS}->{Debug} = ${*$self}->{SOCKS}->{Debug};
-    
     return $client;
 }
 
@@ -828,7 +830,7 @@ sub _socks5_accept_auth
         $debug->show('Recv: ');
     }
     
-    my $status;
+    my $status = 1;
     if (defined(${*$self}->{SOCKS}->{UserAuth}))
     {
         $status = &{${*$self}->{SOCKS}->{UserAuth}}($uname, $passwd);
@@ -920,8 +922,8 @@ sub _socks5_accept_command
         $dstaddr = inet_ntoa($request);
     }
     else
-    {
-        $client->_socks5_accept_command_reply(REPLY_ADDR_NOT_SUPPORTED, '1.1.1.1', 1);
+    { # unknown address type - how many bytes to read?
+        $client->_socks5_accept_command_reply(REPLY_ADDR_NOT_SUPPORTED, '0.0.0.0', 0);
         $SOCKS_ERROR = $CODES{REPLY}->{REPLY_ADDR_NOT_SUPPORTED};
         return;
     }
@@ -937,7 +939,7 @@ sub _socks5_accept_command
         $debug->add(dstport => $dstport);
         $debug->show('Recv: ');
     }
-
+    
     ${*$client}->{SOCKS}->{COMMAND} = [$cmd, $dstaddr, $dstport];
 
     return 1;
@@ -1083,6 +1085,22 @@ sub _socks4_accept_command
         $debug->show('Recv: ');
     }
     
+    if(defined(${*$self}->{SOCKS}->{UserAuth}))
+    {
+        unless( &{${*$self}->{SOCKS}->{UserAuth}}($userid) )
+        {
+            $client->_socks4_accept_command_reply(REQUEST_REJECTED_USERID, '0.0.0.0', 0);
+            $SOCKS_ERROR = 'Authentication failed with SOCKS4 proxy.';
+            return;
+        }
+    }
+    
+    if($ver != SOCKS4_VER)
+    {
+        $SOCKS_ERROR = "Socks version should be 4, $ver recieved";
+        return;
+    }
+    
     ${*$client}->{SOCKS}->{COMMAND} = [$cmd, $dstaddr, $dstport];
     
     return 1;
@@ -1120,12 +1138,12 @@ sub _socks4_accept_command_reply
     # +-----+-----+----------+---------------+
     
     my $bndaddr = inet_aton($host);
-    $self->_socks_send(pack('CCn', SOCKS4_VER, $reply, $port) . $bndaddr)
+    $self->_socks_send(pack('CCn', 0, $reply, $port) . $bndaddr)
         or return _timeout();
     
     if($debug)
     {
-        $debug->add(ver => SOCKS4_VER);
+        $debug->add(ver => 0);
         $debug->add(rep => $reply);
         $debug->add(bndport => $port);
         $debug->add(bndaddr => inet_ntoa($bndaddr));
@@ -1154,7 +1172,15 @@ sub command
 sub command_reply
 {
     my $self = shift;
-    $self->_socks5_accept_command_reply(@_);
+    
+    if(${*$self}->{SOCKS}->{Version} == 4)
+    {
+        $self->_socks4_accept_command_reply(@_);
+    }
+    else
+    {
+        $self->_socks5_accept_command_reply(@_);
+    }
 }
 
 ###############################################################################
@@ -1340,18 +1366,20 @@ IO::Socket::Socks
 
 =head1 SYNOPSIS
 
-Provides a way to open a connection to a SOCKS v5 proxy and use the object
-just like an IO::Socket.
+Provides a way to create socks client or server both 4 and 5 version.
 
 =head1 DESCRIPTION
 
-IO::Socket::Socks connects to a SOCKS v5 proxy, tells it to open a
+IO::Socket::Socks connects to a SOCKS proxy, tells it to open a
 connection to a remote host/port when the object is created.  The
 object you receive can be used directly as a socket for sending and
 receiving data from the remote host. In addition to create socks client
 this module could be used to create socks server. See examples below.
 
 =head1 EXAMPLES
+
+For complete examples of socks 4/5 client and server see `examples'
+subdirectory in the distribution.
 
 =head2 Client
 
@@ -1425,6 +1453,18 @@ this module could be used to create socks server. See examples below.
 Creates a new IO::Socket::Socks object.  It takes the following
 config hash:
 
+=head3 Client and Server
+
+  SocksVersion => 4 for socks v4, 5 for socks v5
+
+  SocksDebug => This will cause all of the SOCKS traffic to
+                be presented on the command line in a form
+                similar to the tables in the RFCs.
+                
+  Timeout => read/write/connect/accept timeout for the socket
+
+=head3 Client
+
   ProxyAddr => Hostname of the proxy
 
   ProxyPort => Port of the proxy
@@ -1435,28 +1475,34 @@ config hash:
 
   AuthType => What kind of authentication to support:
                 none       - no authentication (default)
-                userpass  - Username/Password
+                userpass  - Username/Password. For socks5
+                proxy only.
 
-  RequireAuth => Do not send, or accept, ANON as a valid
-                 auth mechanism.
+  RequireAuth => Do not send ANON as a valid auth mechanism.
+                 For socks5 proxy only
 
-  UserAuth => Function that takes ($user,$pass) and returns
-              1 if they are allowed, 0 otherwise.
-
-  Username => If AuthType is set to userpass, then you must
-              provide a username.
+  Username => For socks5 if AuthType is set to userpass, then
+              you must provide a username. For socks4 proxy with
+              this option you can specify userid.
 
   Password => If AuthType is set to userpass, then you must
-              provide a password.
-              
-  SocksDebug => This will cause all of the SOCKS traffic to
-                be presented on the command line in a form
-                similar to the tables in the RFCs.
+              provide a password. For socks5 proxy only.
 
-  Listen => 0 or 1.  Listen on the ProxyAddr and ProxyPort
-            for incoming connections.
-            
-  Timeout => Timeout openning new socks socket
+=head3 Server
+
+  ProxyAddr => Local host bind	address
+  
+  ProxyPort => Local host bind	port
+  
+  UserAuth => Reference to a function that returns 1 if client
+              allowed to use socks server, 0 otherwise. For
+              socks5 proxy it takes login and password as
+              arguments. For socks4 argument is userid.
+              
+  RequireAuth => Not allow anonymous access for socks5 proxy.
+  
+  Listen => Same as IO::Socket::INET listen option. Should be
+            specified > 0 for the server.
 
 =head2 accept( )
 
@@ -1477,7 +1523,13 @@ the following format:
 
 After you call command() the client needs to be told what the result
 is.  The REPLY CODE is as follows (integer value):
-
+  For socks v4
+  90: request granted
+  91: request rejected or failed
+  92: request rejected becasue SOCKS server cannot connect to identd on the client
+  93: request rejected because the client program and identd report different user-ids
+  
+  For socks v5
   0: Success
   1: General Failure
   2: Connection Not Allowed
@@ -1497,6 +1549,14 @@ command.
 
 This scalar behaves like $! in that if undef is returned, this variable
 should contain a string reason for the error. Imported by default.
+
+=head2 $SOCKS4_RESOLVE
+
+If this variable have true value resolving of host names will be done
+by proxy server, otherwise resolving will be done locally. Resolving
+host by socks proxy version 4 is extension to the protocol also known
+as socks4a. So, only socks4a proxy  supports resolving of hostnames.
+Default value of this variable is false.
 
 =head2 $SOCKS5_RESOLVE
 
