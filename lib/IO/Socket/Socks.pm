@@ -1523,6 +1523,7 @@ the following format:
 
 After you call command() the client needs to be told what the result
 is.  The REPLY CODE is as follows (integer value):
+
   For socks v4
   90: request granted
   91: request rejected or failed
