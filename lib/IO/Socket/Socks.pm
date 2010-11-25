@@ -507,7 +507,7 @@ sub _socks5_connect_command
     
     if ($atyp == ADDR_DOMAINNAME)
     {
-        $reply = $self->_socks_read()
+        defined( $reply = $self->_socks_read() )
             or return _timeout();
         
         my $hlen = unpack('C', $reply);
@@ -900,7 +900,7 @@ sub _socks5_accept_command
     my $dstaddr;
     if ($atyp == ADDR_DOMAINNAME)
     {
-        $request = $client->_socks_read()
+        defined( $request = $client->_socks_read() )
             or return _timeout();
         
         my $hlen = unpack('C', $request);
@@ -995,10 +995,13 @@ sub _socks5_accept_command_reply
 
 ###############################################################################
 #
-# _socks4_accept - Wait for an opening handsake, and reply.
+# _socks4_accept_command - Wait for an opening handsake and process a SOCKS4
+#                          command request.  Since this is a library and not
+#                          a server, we cannot process the command.  Let the
+#                          parent program handle that.
 #
 ###############################################################################
-sub _socks4_accept
+sub _socks4_accept_command
 {
     my $self = shift;
     my $client = shift;
@@ -1024,8 +1027,109 @@ sub _socks4_accept
     
     while(1)
     {
-        $c = $client->_socks_read()
-            or return _timeout(); # c == 0 ????
+        defined( $c = $client->_socks_read() )
+            or return _timeout();
+            
+        if($c ne "\0")
+        {
+            $userid .= $c;
+        }
+        else
+        {
+            last;
+        }
+    }
+    
+    if($debug)
+    {
+        $debug->add(ver => $ver);
+        $debug->add(cmd => $cmd);
+        $debug->add(dstport => $dstport);
+        $debug->add(dstaddr => $dstaddr);
+        $debug->add(userid => $userid);
+        $debug->add(null => 0);
+    }
+    
+    if($SOCKS4_RESOLVE && $dstaddr =~ /^0\.0\.0\.[1-9]/)
+    { # socks4a
+        my $dsthost = '';
+        
+        while(1)
+        {
+            defined( $c = $client->_socks_read() )
+                or return _timeout();
+                
+            if($c ne "\0")
+            {
+                $dsthost .= $c;
+            }
+            else
+            {
+                last;
+            }
+        }
+        
+        if($debug)
+        {
+            $debug->add(dsthost => $dsthost);
+            $debug->add(null => 0);
+        }
+        
+        $dstaddr = join('.', unpack('C4', (gethostbyname($dsthost))[4]));
+    }
+    
+    if($debug)
+    {
+        $debug->show('Recv: ');
+    }
+    
+    ${*$client}->{SOCKS}->{COMMAND} = [$cmd, $dstaddr, $dstport];
+    
+    return 1;
+}
+
+
+###############################################################################
+#
+# _socks4_acccept_command_reply - Answer a SOCKS4 command request.  Since this
+#                                 is a library and not a server, we cannot
+#                                 process the command.  Let the parent program
+#                                 handle that.
+#
+###############################################################################
+sub _socks4_accept_command_reply
+{
+    my $self = shift;
+    my $reply = shift;
+    my $host = shift;
+    my $port = shift;
+    my $debug = IO::Socket::Socks::Debug->new() if(${*$self}->{SOCKS}->{Debug});
+
+    if (!defined($reply) || !defined($host) || !defined($port))
+    {
+        croak("You must provide a reply, host, and port on the command reply.");
+    }
+
+    #--------------------------------------------------------------------------
+    # Send the reply
+    #--------------------------------------------------------------------------
+    # +-----+-----+----------+---------------+
+    # | VER | REP | BND.PORT |   BND.ADDR    |
+    # +-----+-----+----------+---------------+
+    # |  1  |  1  |    2     |       4       |
+    # +-----+-----+----------+---------------+
+    
+    my $bndaddr = inet_aton($host);
+    $self->_socks_send(pack('CCn', SOCKS4_VER, $reply, $port) . $bndaddr)
+        or return _timeout();
+    
+    if($debug)
+    {
+        $debug->add(ver => SOCKS4_VER);
+        $debug->add(rep => $reply);
+        $debug->add(bndport => $port);
+        $debug->add(bndaddr => inet_ntoa($bndaddr));
+        $debug->show('Send: ');
     }
 }
 
