@@ -14,9 +14,10 @@ my $socks = new IO::Socket::Socks(ProxyAddr=>"127.0.0.1",
                                   ProxyPort=>"1090",
                                   ConnectAddr=>"www.google.com",
                                   ConnectPort=>80,
-                                  Username=>"afoo", # most socks4 servers doesn't need userid, you can comment this
-                                  SocksDebug=>1, # comment this if you are not interested in debug information
-                                  SocksVersion => 4 # default is 5
+                                  Username=>"oleg", # most socks4 servers doesn't needs userid, you can comment this
+                                  SocksDebug=>1, # comment this if you are not interested in the debug information
+                                  SocksVersion => 4, # default is 5
+                                  Timeout=>10,
                                  )
 or die $SOCKS_ERROR;
 

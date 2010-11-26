@@ -30,7 +30,7 @@ while(1)
             if($socket)
             {
                 # request granted
-                $client->command_reply(90, $host, $port);
+                $client->command_reply(90, $socket->sockhost, $socket->sockport);
             }
             else
             {

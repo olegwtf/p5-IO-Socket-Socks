@@ -15,10 +15,13 @@ my $socks = new IO::Socket::Socks(ProxyAddr=>"127.0.0.1",
                                   ConnectAddr=>"www.google.com",
                                   ConnectPort=>80,
                                   # uncomment lines below if you want to use authentication
-                                  #Username=>"afoo",
-                                  #Userpassword=>"123",
+                                  #Username=>"oleg",
+                                  #Password=>"321",
                                   #AuthType=>"userpass",
-                                  SocksDebug=>1, # comment this if you are not interested in debug information
+                                  # uncomment line below if you want client not to send anonymous as supported method
+                                  #RequireAuth=>1,
+                                  SocksDebug=>1, # comment this if you are not interested in the debug information
+                                  Timeout=>10,
                                  )
 or die $SOCKS_ERROR;
 

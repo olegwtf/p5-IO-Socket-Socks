@@ -27,7 +27,7 @@ while(1)
             if($socket)
             {
                 # success
-                $client->command_reply(0, $host, $port);
+                $client->command_reply(0, $socket->sockhost, $socket->sockport);
             }
             else
             {

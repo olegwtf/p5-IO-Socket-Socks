@@ -478,7 +478,7 @@ sub _socks5_connect_command
         $debug->add(rsv => 0);
         $debug->add(atyp => $atyp);
         $debug->add(hlen => $hlen) if defined $hlen;
-        $debug->add(dstaddr => $SOCKS5_RESOLVE ? $dstaddr : inet_ntoa($dstaddr));
+        $debug->add(dstaddr => $SOCKS5_RESOLVE ? $dstaddr : (length($dstaddr) == 4 ? inet_ntoa($dstaddr) : undef));
         $debug->add(dstport => ${*$self}->{SOCKS}->{ConnectPort});
         $debug->show('Send: ');
     }
@@ -528,7 +528,7 @@ sub _socks5_connect_command
         
         if($debug)
         {
-            my $bndaddr = inet_ntoa($reply);
+            my $bndaddr = length($reply) == 4 ? inet_ntoa($reply) : undef;
             $debug->add(bndaddr => $bndaddr);
         }
     }
@@ -597,7 +597,7 @@ sub _socks4_connect
         $debug->add(ver => SOCKS4_VER);
         $debug->add(cmd => $cmd);
         $debug->add(dstport => ${*$self}->{SOCKS}->{ConnectPort});
-        $debug->add(dstaddr => inet_ntoa($dstaddr));
+        $debug->add(dstaddr => length($dstaddr) == 4 ? inet_ntoa($dstaddr) : undef);
         $debug->add(userid => $userid);
         $debug->add(null => 0);
         if($dsthost)
@@ -623,7 +623,8 @@ sub _socks4_connect
     my ($ver, $rep, $bndport) = unpack('CCn', $reply);
     if($debug)
     {
-        my $bndaddr = inet_ntoa(substr($reply, 4));
+        substr($reply, 0, 4) = '';
+        my $bndaddr = length($reply) == 4 ? inet_ntoa($reply) : undef;
         
         $debug->add(ver => $ver);
         $debug->add(rep => $rep);
@@ -919,7 +920,7 @@ sub _socks5_accept_command
         $request = $client->_socks_read(4)
             or return _timeout();
         
-        $dstaddr = inet_ntoa($request);
+        $dstaddr = length($request) == 4 ? inet_ntoa($request) : undef;
     }
     else
     { # unknown address type - how many bytes to read?
@@ -988,7 +989,7 @@ sub _socks5_accept_command_reply
         $debug->add(rsv => 0);
         $debug->add(atyp => $atyp);
         $debug->add(hlen => $hlen) if $SOCKS5_RESOLVE;
-        $debug->add(bndaddr => $SOCKS5_RESOLVE ? $bndaddr : inet_ntoa($bndaddr));
+        $debug->add(bndaddr => $SOCKS5_RESOLVE ? $bndaddr : (length($bndaddr) == 4 ? inet_ntoa($bndaddr) : undef));
         $debug->add(bndport => $port);
         $debug->show('Send: ');
     }
@@ -1022,7 +1023,8 @@ sub _socks4_accept_command
         or return _timeout();
     
     my ($ver, $cmd, $dstport) = unpack('CCn', $request);
-    my $dstaddr = inet_ntoa( substr($request, 4) );
+    substr($request, 0, 4) = '';
+    my $dstaddr = length($request) == 4 ? inet_ntoa($request) : undef;
     
     my $userid = '';
     my $c;
@@ -1146,7 +1148,7 @@ sub _socks4_accept_command_reply
         $debug->add(ver => 0);
         $debug->add(rep => $reply);
         $debug->add(bndport => $port);
-        $debug->add(bndaddr => inet_ntoa($bndaddr));
+        $debug->add(bndaddr => length($bndaddr) == 4 ? inet_ntoa($bndaddr) : undef);
         $debug->show('Send: ');
     }
 }
@@ -1502,7 +1504,7 @@ config hash:
   RequireAuth => Not allow anonymous access for socks5 proxy.
   
   Listen => Same as IO::Socket::INET listen option. Should be
-            specified > 0 for the server.
+            specified as number > 0 for the server.
 
 =head2 accept( )
 
@@ -1568,7 +1570,9 @@ value is true. This variable is not importable.
 
 =head1 AUTHOR
 
-Ryan Eatmon
+Original author is Ryan Eatmon
+
+Now maintained by Oleg G
 
 =head1 COPYRIGHT
 
