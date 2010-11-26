@@ -1,3 +1,5 @@
+#!/usr/bin/perl
+
 use IO::Socket::Socks;
 use IO::Select;
 use strict;
@@ -6,7 +8,7 @@ use strict;
 $IO::Socket::Socks::SOCKS5_RESOLVE = 0;
 
 # create socks server
-my $server = IO::Socket::Socks->new(SocksVersion => 5, SocksDebug => 1, ProxyAddr => 'localhost', ProxyPort => 1090, Listen => 10, UserAuth => \&auth, RequireAuth => 1)
+my $server = IO::Socket::Socks->new(SocksVersion => 5, SocksDebug => 1, ProxyAddr => 'localhost', ProxyPort => 1090, Listen => 10)
     or die $SOCKS_ERROR;
 
 # accept connections

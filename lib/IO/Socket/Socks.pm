@@ -1455,7 +1455,7 @@ config hash:
 
 =head3 Client and Server
 
-  SocksVersion => 4 for socks v4, 5 for socks v5
+  SocksVersion => 4 for socks v4, 5 for socks v5. Default is 5
 
   SocksDebug => This will cause all of the SOCKS traffic to
                 be presented on the command line in a form
