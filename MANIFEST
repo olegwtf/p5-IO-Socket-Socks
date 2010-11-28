@@ -4,11 +4,10 @@ LICENSE.LGPL
 MANIFEST
 MANIFEST.SKIP
 Makefile.PL
-examples/client.pl
-examples/server.pl
+examples/client4.pl
+examples/server4.pl
+examples/client5.pl
+examples/server5.pl
 lib/IO/Socket/Socks.pm
 t/1_load.t
 t/2_new.t
-t/lib/Test/Builder.pm
-t/lib/Test/More.pm
-t/lib/Test/Simple.pm

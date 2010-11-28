@@ -1555,7 +1555,7 @@ should contain a string reason for the error. Imported by default.
 
 =head2 $SOCKS4_RESOLVE
 
-If this variable have true value resolving of host names will be done
+If this variable has true value resolving of host names will be done
 by proxy server, otherwise resolving will be done locally. Resolving
 host by socks proxy version 4 is extension to the protocol also known
 as socks4a. So, only socks4a proxy  supports resolving of hostnames.
@@ -1563,7 +1563,7 @@ Default value of this variable is false. This variable is not importable.
 
 =head2 $SOCKS5_RESOLVE
 
-If this variable have true value resolving of host names will be done
+If this variable has true value resolving of host names will be done
 by proxy server, otherwise resolving will be done locally. Note: some
 bugous socks5 servers doesn't support resolving of host names. Default
 value is true. This variable is not importable.
@@ -1572,7 +1572,7 @@ value is true. This variable is not importable.
 
 Original author is Ryan Eatmon
 
-Now maintained by Oleg G
+Now maintained by Oleg G <oleg@cpan.org>
 
 =head1 COPYRIGHT
 
