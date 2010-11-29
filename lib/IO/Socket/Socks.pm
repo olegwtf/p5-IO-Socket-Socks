@@ -27,7 +27,7 @@ use IO::Select;
 use Errno qw(EWOULDBLOCK);
 use Carp;
 use base qw( IO::Socket::INET );
-use vars qw(@ISA @EXPORT $VERSION %CODES );
+use vars qw( @ISA @EXPORT $VERSION %CODES );
 require Exporter;
 @ISA = qw(Exporter IO::Socket::INET);
 @EXPORT = qw( $SOCKS_ERROR );
@@ -243,7 +243,7 @@ sub configure
 ###############################################################################
 #
 # connect - On a configure, connect is called to open the connection.  When
-#           we do this we have to talk to the SOCKS5 proxy, log in, and
+#           we do this we have to talk to the SOCKS proxy, log in, and
 #           connect to the remote host.
 #
 ###############################################################################
@@ -1457,7 +1457,7 @@ config hash:
 
 =head3 Client and Server
 
-  SocksVersion => 4 for socks v4, 5 for socks v5. Default is 5
+  SocksVersion => 4 for socks v4; 5 for socks v5. Default is 5
 
   SocksDebug => This will cause all of the SOCKS traffic to
                 be presented on the command line in a form
