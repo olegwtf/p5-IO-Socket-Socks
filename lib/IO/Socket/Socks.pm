@@ -45,7 +45,7 @@ use constant ADDR_DOMAINNAME => 3;
 use constant ADDR_IPV6       => 4;
 
 use constant CMD_CONNECT  => 1;
-#use constant CMD_BIND     => 2;
+use constant CMD_BIND     => 2;
 #use constant CMD_UDPASSOC => 3;
 
 use constant AUTHMECH_ANON     => 0;
@@ -128,30 +128,18 @@ sub configure
          croak("You must provide a ProxyPort to either connect to, or listen on.")
         );
 
-    ${*$self}->{SOCKS}->{ConnectAddr} =
-        (exists($args->{ConnectAddr}) ?
-         delete($args->{ConnectAddr}) :
-         undef
-        );
-
-    ${*$self}->{SOCKS}->{ConnectPort} =
-        (exists($args->{ConnectPort}) ?
-         delete($args->{ConnectPort}) :
-         undef
-        );
+    if(exists($args->{BindAddr}) && exists($args->{BindPort}))
+    {
+        ${*$self}->{SOCKS}->{CmdAddr} = delete($args->{BindAddr});
+        ${*$self}->{SOCKS}->{CmdPort} = delete($args->{BindPort});
+        ${*$self}->{SOCKS}->{Bind} = 1;
+    }
+    elsif(exists($args->{ConnectAddr}) && exists($args->{ConnectPort}))
+    {
+        ${*$self}->{SOCKS}->{CmdAddr} = delete($args->{ConnectAddr});
+        ${*$self}->{SOCKS}->{CmdPort} = delete($args->{ConnectPort});
+    }
     
-    #${*$self}->{SOCKS}->{BindAddr} =
-    #    (exists($args->{BindAddr}) ?
-    #     delete($args->{BindAddr}) :
-    #     undef
-    #    );
-
-    #${*$self}->{SOCKS}->{BindPort} =
-    #    (exists($args->{BindPort}) ?
-    #     delete($args->{BindPort}) :
-    #     undef
-    #    );
-
     ${*$self}->{SOCKS}->{AuthType} =
         (exists($args->{AuthType}) ?
          delete($args->{AuthType}) :
@@ -289,18 +277,7 @@ sub connect
     #--------------------------------------------------------------------------
     # Send the command (CONNECT/BIND/UDP)
     #--------------------------------------------------------------------------
-    if (defined(${*$self}->{SOCKS}->{ConnectAddr}) &&
-        defined(${*$self}->{SOCKS}->{ConnectPort}))
-    {
-        return unless $self->_socks5_connect_command(CMD_CONNECT);
-
-        #if (defined(${*$self}->{SOCKS}->{BindPort}))
-        #{
-        #    ${*$self}->{SOCKS}->{BindAddr} = ${*$self}->{SOCKS}->{ProxyAddr}
-        #        unless defined(${*$self}->{SOCKS}->{BindAddr});
-        #    return unless $self->_socks5_connect_command(CMD_BIND);
-        #}
-    }
+    return unless $self->_socks5_connect_command(${*$self}->{SOCKS}->{Bind} ? CMD_BIND : CMD_CONNECT);
 
     return $self;
 }
@@ -1186,6 +1163,16 @@ sub command_reply
 }
 
 ###############################################################################
+#
+# dst - access to the address and port selected by socks server when connect/bind
+#
+###############################################################################
+sub dst
+{
+    return (${*$self}->{SOCKS}->{DstAddr}, ${*$self}->{SOCKS}->{DstPort});
+}
+
+###############################################################################
 #+-----------------------------------------------------------------------------
 #| Helper Functions
 #+-----------------------------------------------------------------------------
@@ -1289,46 +1276,44 @@ package IO::Socket::Socks::Debug;
 sub new
 {
     my ($class) = @_;
-    
-    my $self = {};
-    $self->{data} = [];
-    
+    my $self = [];
+
     bless $self, $class;
 }
 
 sub add
 {
-    my ($self, $name, $value) = @_;
-    push @{$self->{data}}, $name, $value;
+    my $self = shift;
+    push @{$self}, @_;
 }
 
 sub show
 {
     my ($self, $tag) = @_;
     
-    _separator($self->{data}, $tag);
-    _row($self->{data}, 0, $tag);
-    _separator($self->{data}, $tag);
-    _row($self->{data}, 1, $tag);
-    _separator($self->{data}, $tag);
+    $self->_separator($tag);
+    $self->_row(0, $tag);
+    $self->_separator($tag);
+    $self->_row(1, $tag);
+    $self->_separator($tag);
     
     print "\n";
     
-    @{$self->{data}} = ();
+    @{$self} = ();
 }
 
 sub _separator
 {
-    my $ref = shift;
-    my $tag = shift;
+    my $self = shift;
+    my $tag  = shift;
     my ($row1_len, $row2_len, $len);
     
     print $tag, '+';
     
-    for(my $i=0; $i<@$ref; $i+=2)
+    for(my $i=0; $i<@$self; $i+=2)
     {
-        $row1_len = length($ref->[$i]);
-        $row2_len = length($ref->[$i+1]);
+        $row1_len = length($self->[$i]);
+        $row2_len = length($self->[$i+1]);
         $len = ($row1_len > $row2_len ? $row1_len : $row2_len)+2;
         
         print '-' x $len, '+';
@@ -1339,20 +1324,20 @@ sub _separator
 
 sub _row
 {
-    my $ref = shift;
-    my $row = shift;
-    my $tag = shift;
+    my $self = shift;
+    my $row  = shift;
+    my $tag  = shift;
     my ($row1_len, $row2_len, $len);
     
     print $tag, '|';
     
-    for(my $i=0; $i<@$ref; $i+=2)
+    for(my $i=0; $i<@$self; $i+=2)
     {
-        $row1_len = length($ref->[$i]);
-        $row2_len = length($ref->[$i+1]);
+        $row1_len = length($self->[$i]);
+        $row2_len = length($self->[$i+1]);
         $len = ($row1_len > $row2_len ? $row1_len : $row2_len);
         
-        printf(' %-'.$len.'s |', $ref->[$i+$row]);
+        printf(' %-'.$len.'s |', $self->[$i+$row]);
     }
     
     print "\n";
