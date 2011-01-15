@@ -1,3 +1,9 @@
+0.3
+===
+  - clarified the issue with the license (Bug #44047)
+  - socks bind support added
+  - improvements in the documentation
+
 0.2
 ===
   - fixed possible SIGPIPE (Bug #62997)
