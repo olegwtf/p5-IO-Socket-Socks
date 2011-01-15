@@ -1,4 +1,4 @@
-IO::Socket::Socks v0.2
+IO::Socket::Socks v0.3
 
 This module seeks to provide a full implementation of the SOCKS protocol
 while behaving like a regular socket as much as possible.
@@ -16,4 +16,4 @@ INSTALLATION
   make
   make install
 
-2010/11/28
+2011/01/15
