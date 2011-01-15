@@ -8,6 +8,7 @@ examples/client4.pl
 examples/server4.pl
 examples/client5.pl
 examples/server5.pl
+examples/bind.pl
 lib/IO/Socket/Socks.pm
 t/1_load.t
 t/2_new.t

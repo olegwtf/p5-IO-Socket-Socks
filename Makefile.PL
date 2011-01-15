@@ -5,6 +5,7 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile(
     'NAME'      => 'IO::Socket::Socks',
+    'LICENSE'   => 'lgpl',
     'PREREQ_PM' => { 'IO::Socket::INET'  => 0, 'IO::Select' => 0 },
     'VERSION_FROM'  => 'lib/IO/Socket/Socks.pm',
     'dist' => {

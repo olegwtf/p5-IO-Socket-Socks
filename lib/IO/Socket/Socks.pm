@@ -26,16 +26,68 @@ use IO::Socket;
 use IO::Select;
 use Errno qw(EWOULDBLOCK);
 use Carp;
-use base qw( IO::Socket::INET );
-use vars qw( @ISA @EXPORT $VERSION %CODES );
+use vars qw( @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION $SOCKS_ERROR $SOCKS5_RESOLVE $SOCKS4_RESOLVE %CODES );
 require Exporter;
 @ISA = qw(Exporter IO::Socket::INET);
 @EXPORT = qw( $SOCKS_ERROR );
+@EXPORT_OK = qw(
+    SOCKS5_VER
+    SOCKS4_VER
+    ADDR_IPV4
+    ADDR_DOMAINNAME
+    ADDR_IPV6
+    CMD_CONNECT
+    CMD_BIND
+    AUTHMECH_ANON
+    AUTHMECH_USERPASS
+    AUTHMECH_INVALID
+    AUTHREPLY_SUCCESS
+    AUTHREPLY_FAILURE
+    REPLY_SUCCESS
+    REPLY_GENERAL_FAILURE
+    REPLY_CONN_NOT_ALLOWED
+    REPLY_NETWORK_UNREACHABLE
+    REPLY_HOST_UNREACHABLE
+    REPLY_CONN_REFUSED
+    REPLY_TTL_EXPIRED
+    REPLY_CMD_NOT_SUPPORTED
+    REPLY_ADDR_NOT_SUPPORTED
+    REQUEST_GRANTED
+    REQUEST_FAILED
+    REQUEST_REJECTED_IDENTD
+    REQUEST_REJECTED_USERID
+);
+%EXPORT_TAGS = (constants => [qw(
+    SOCKS5_VER
+    SOCKS4_VER
+    ADDR_IPV4
+    ADDR_DOMAINNAME
+    ADDR_IPV6
+    CMD_CONNECT
+    CMD_BIND
+    AUTHMECH_ANON
+    AUTHMECH_USERPASS
+    AUTHMECH_INVALID
+    AUTHREPLY_SUCCESS
+    AUTHREPLY_FAILURE
+    REPLY_SUCCESS
+    REPLY_GENERAL_FAILURE
+    REPLY_CONN_NOT_ALLOWED
+    REPLY_NETWORK_UNREACHABLE
+    REPLY_HOST_UNREACHABLE
+    REPLY_CONN_REFUSED
+    REPLY_TTL_EXPIRED
+    REPLY_CMD_NOT_SUPPORTED
+    REPLY_ADDR_NOT_SUPPORTED
+    REQUEST_GRANTED
+    REQUEST_FAILED
+    REQUEST_REJECTED_IDENTD
+    REQUEST_REJECTED_USERID
+)]);
 
 $VERSION = "0.3";
-our $SOCKS_ERROR;
-our $SOCKS5_RESOLVE = 1;
-our $SOCKS4_RESOLVE = 0;
+$SOCKS5_RESOLVE = 1;
+$SOCKS4_RESOLVE = 0;
 
 use constant SOCKS5_VER =>  5;
 use constant SOCKS4_VER =>  4;
@@ -127,22 +179,6 @@ sub configure
          delete($args->{ProxyPort}) :
          croak("You must provide a ProxyPort to either connect to, or listen on.")
         );
-
-    if(exists($args->{BindAddr}) && exists($args->{BindPort}))
-    {
-        ${*$self}->{SOCKS}->{CmdAddr} = delete($args->{BindAddr});
-        ${*$self}->{SOCKS}->{CmdPort} = delete($args->{BindPort});
-        ${*$self}->{SOCKS}->{Bind} = 1;
-    }
-    elsif(exists($args->{ConnectAddr}) && exists($args->{ConnectPort}))
-    {
-        ${*$self}->{SOCKS}->{CmdAddr} = delete($args->{ConnectAddr});
-        ${*$self}->{SOCKS}->{CmdPort} = delete($args->{ConnectPort});
-    }
-    else
-    {
-        croak("You must provide ConnectAddr and ConnectPort or BindAddr and BindPort");
-    }
     
     ${*$self}->{SOCKS}->{AuthType} =
         (exists($args->{AuthType}) ?
@@ -185,6 +221,12 @@ sub configure
          delete($args->{SocksDebug}) :
          0
         );
+        
+    ${*$self}->{SOCKS}->{Resolve} = 
+        (exists($args->{SocksResolve}) ?
+         delete($args->{SocksResolve}) :
+         undef
+        );
     
     ${*$self}->{SOCKS}->{AuthMethods} = [0,0,0];
     ${*$self}->{SOCKS}->{AuthMethods}->[AUTHMECH_ANON] = 1
@@ -197,7 +239,23 @@ sub configure
             (exists($args->{Listen}) &&
             defined(${*$self}->{SOCKS}->{UserAuth})));
     
-    ${*$self}->{SOCKS}->{COMMAND} = undef;
+    ${*$self}->{SOCKS}->{COMMAND} = [];
+    
+    if(exists($args->{BindAddr}) && exists($args->{BindPort}))
+    {
+        ${*$self}->{SOCKS}->{CmdAddr} = delete($args->{BindAddr});
+        ${*$self}->{SOCKS}->{CmdPort} = delete($args->{BindPort});
+        ${*$self}->{SOCKS}->{Bind} = 1;
+    }
+    elsif(exists($args->{ConnectAddr}) && exists($args->{ConnectPort}))
+    {
+        ${*$self}->{SOCKS}->{CmdAddr} = delete($args->{ConnectAddr});
+        ${*$self}->{SOCKS}->{CmdPort} = delete($args->{ConnectPort});
+    }
+    elsif(!exists($args->{Listen}))
+    {
+        croak("You must provide ConnectAddr and ConnectPort or BindAddr and BindPort");
+    }
 
     if (exists($args->{Listen}))
     {
@@ -446,7 +504,8 @@ sub _socks5_connect_command
     my $self = shift;
     my $command = shift;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
-
+    my $resolve = defined(${*$self}->{SOCKS}->{Resolve}) ? ${*$self}->{SOCKS}->{Resolve} : $SOCKS5_RESOLVE;
+    
     #--------------------------------------------------------------------------
     # Send the command
     #--------------------------------------------------------------------------
@@ -456,9 +515,9 @@ sub _socks5_connect_command
     # | 1  |  1  | X'00' |  1   | Variable |    2     |
     # +----+-----+-------+------+----------+----------+
     
-    my $atyp = $SOCKS5_RESOLVE ? ADDR_DOMAINNAME : ADDR_IPV4;
-    my $dstaddr = $SOCKS5_RESOLVE ? ${*$self}->{SOCKS}->{CmdAddr} : inet_aton(${*$self}->{SOCKS}->{CmdAddr});
-    my $hlen = length($dstaddr) if $SOCKS5_RESOLVE;
+    my $atyp = $resolve ? ADDR_DOMAINNAME : ADDR_IPV4;
+    my $dstaddr = $resolve ? ${*$self}->{SOCKS}->{CmdAddr} : inet_aton(${*$self}->{SOCKS}->{CmdAddr});
+    my $hlen = length($dstaddr) if $resolve;
     my $dstport = pack('n', ${*$self}->{SOCKS}->{CmdPort});
     $self->_socks_send(pack('CCCC', SOCKS5_VER, $command, 0, $atyp) . (defined($hlen) ? pack('C', $hlen) : '') . $dstaddr . $dstport)
         or return _timeout();
@@ -473,7 +532,7 @@ sub _socks5_connect_command
         );
         $debug->add(hlen => $hlen) if defined $hlen;
         $debug->add(
-            dstaddr => $SOCKS5_RESOLVE ? $dstaddr : (length($dstaddr) == 4 ? inet_ntoa($dstaddr) : undef),
+            dstaddr => $resolve ? $dstaddr : (length($dstaddr) == 4 ? inet_ntoa($dstaddr) : undef),
             dstport => ${*$self}->{SOCKS}->{CmdPort}
         );
         $debug->show('Send: ');
@@ -499,8 +558,7 @@ sub _socks5_connect_reply
     my $reply = $self->_socks_read(4)
         or return _timeout();
     
-    my ($ver, $rep, $rsv);
-    ($ver, $rep, $rsv, $atyp) = unpack('CCCC', $reply);
+    my ($ver, $rep, $rsv, $atyp) = unpack('CCCC', $reply);
     
     if($debug)
     {
@@ -512,13 +570,15 @@ sub _socks5_connect_reply
         );
     }
     
+    my ($bndaddr, $bndport);
+    
     if ($atyp == ADDR_DOMAINNAME)
     {
         defined( $reply = $self->_socks_read() )
             or return _timeout();
         
         my $hlen = unpack('C', $reply);
-        my $bndaddr = $self->_socks_read($hlen)
+        $bndaddr = $self->_socks_read($hlen)
             or return _timeout();
         
         if($debug)
@@ -533,10 +593,10 @@ sub _socks5_connect_reply
     {
         $reply = $self->_socks_read(4)
             or return _timeout();
+        $bndaddr = length($reply) == 4 ? inet_ntoa($reply) : undef;
         
         if($debug)
         {
-            my $bndaddr = length($reply) == 4 ? inet_ntoa($reply) : undef;
             $debug->add(bndaddr => $bndaddr);
         }
     }
@@ -548,10 +608,13 @@ sub _socks5_connect_reply
     
     $reply = $self->_socks_read(2)
         or return _timeout();
+    $bndport = unpack('n', $reply);
+    
+    ${*$self}->{SOCKS}->{DstAddr} = $bndaddr;
+    ${*$self}->{SOCKS}->{DstPort} = $bndport;
     
     if($debug)
     {
-        my $bndport = unpack('n', $reply);
         $debug->add(bndport => $bndport);
         $debug->show('Recv: ');
     }
@@ -578,6 +641,7 @@ sub _socks4_connect_command
     my $self = shift;
     my $command = shift;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
+    my $resolve = defined(${*$self}->{SOCKS}->{Resolve}) ? ${*$self}->{SOCKS}->{Resolve} : $SOCKS4_RESOLVE;
     
     #--------------------------------------------------------------------------
     # Send the command
@@ -588,11 +652,11 @@ sub _socks4_connect_command
     # |  1  |  1  |    2     |       4       | variable |  1   |
     # +-----+-----+----------+---------------+----------+------+
     
-    my $dstaddr = $SOCKS4_RESOLVE ? inet_aton('0.0.0.1') : inet_aton(${*$self}->{SOCKS}->{CmdAddr});
+    my $dstaddr = $resolve ? inet_aton('0.0.0.1') : inet_aton(${*$self}->{SOCKS}->{CmdAddr});
     my $dstport = pack('n', ${*$self}->{SOCKS}->{CmdPort});
     my $userid  = ${*$self}->{SOCKS}->{Username};
     my $dsthost;
-    if($SOCKS4_RESOLVE)
+    if($resolve)
     { # socks4a
         $dsthost = ${*$self}->{SOCKS}->{CmdAddr} . pack('C', 0);
     }
@@ -641,11 +705,14 @@ sub _socks4_connect_reply
         or return _timeout();
     
     my ($ver, $rep, $bndport) = unpack('CCn', $reply);
+    substr($reply, 0, 4) = '';
+    my $bndaddr = length($reply) == 4 ? inet_ntoa($reply) : undef;
+    
+    ${*$self}->{SOCKS}->{DstAddr} = $bndaddr;
+    ${*$self}->{SOCKS}->{DstPort} = $bndport;
+    
     if($debug)
     {
-        substr($reply, 0, 4) = '';
-        my $bndaddr = length($reply) == 4 ? inet_ntoa($reply) : undef;
-        
         $debug->add(
             ver => $ver,
             rep => $rep,
@@ -718,14 +785,8 @@ sub accept
     }
     else
     {
-        if(${*$self}->{SOCKS}->{Version} == 4)
-        {
-            $self->_socks4_connect_reply();
-        }
-        else
-        {
-            $self->_socks5_connect_reply();
-        }
+        my $status = ${*$self}->{SOCKS}->{Version} == 4 ? $self->_socks4_connect_reply() : $self->_socks5_connect_reply();
+        return $status ? $self : undef;
     }
 }
 
@@ -921,6 +982,8 @@ sub _socks5_accept_command
     my $self = shift;
     my $client = shift;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
+    
+    @{${*$client}->{SOCKS}->{COMMAND}} = ();
 
     #--------------------------------------------------------------------------
     # Read the command
@@ -988,7 +1051,7 @@ sub _socks5_accept_command
         $debug->show('Recv: ');
     }
     
-    ${*$client}->{SOCKS}->{COMMAND} = [$cmd, $dstaddr, $dstport];
+    @{${*$client}->{SOCKS}->{COMMAND}} = ($cmd, $dstaddr, $dstport);
 
     return 1;
 }
@@ -1008,6 +1071,7 @@ sub _socks5_accept_command_reply
     my $host = shift;
     my $port = shift;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
+    my $resolve = defined(${*$self}->{SOCKS}->{Resolve}) ? ${*$self}->{SOCKS}->{Resolve} : $SOCKS5_RESOLVE;
 
     if (!defined($reply) || !defined($host) || !defined($port))
     {
@@ -1023,10 +1087,10 @@ sub _socks5_accept_command_reply
     # | 1  |  1  | X'00' |  1   | Variable |    2     |
     # +----+-----+-------+------+----------+----------+
     
-    my $atyp = $SOCKS5_RESOLVE ? ADDR_DOMAINNAME : ADDR_IPV4;
-    my $bndaddr = $SOCKS5_RESOLVE ? $host : inet_aton($host);
-    my $hlen = length($bndaddr) if $SOCKS5_RESOLVE;
-    $self->_socks_send(pack('CCCC', SOCKS5_VER, $reply, 0, $atyp) . ($SOCKS5_RESOLVE ? pack('C', $hlen) : '') . $bndaddr . pack('n', $port))
+    my $atyp = $resolve ? ADDR_IPV4 : ADDR_DOMAINNAME;
+    my $bndaddr = $resolve ? inet_aton($host) : $host;
+    my $hlen = length($bndaddr) unless $resolve;
+    $self->_socks_send(pack('CCCC', SOCKS5_VER, $reply, 0, $atyp) . ($resolve ? '' : pack('C', $hlen)) . $bndaddr . pack('n', $port))
         or return _timeout();
     
     if($debug)
@@ -1037,9 +1101,9 @@ sub _socks5_accept_command_reply
             rsv => 0,
             atyp => $atyp
         );
-        $debug->add(hlen => $hlen) if $SOCKS5_RESOLVE;
+        $debug->add(hlen => $hlen) unless $resolve;
         $debug->add(
-            bndaddr => $SOCKS5_RESOLVE ? $bndaddr : (length($bndaddr) == 4 ? inet_ntoa($bndaddr) : undef),
+            bndaddr => $resolve ? (length($bndaddr) == 4 ? inet_ntoa($bndaddr) : undef) : $bndaddr,
             bndport => $port
         );
         $debug->show('Send: ');
@@ -1060,6 +1124,9 @@ sub _socks4_accept_command
     my $self = shift;
     my $client = shift;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
+    my $resolve = defined(${*$self}->{SOCKS}->{Resolve}) ? ${*$self}->{SOCKS}->{Resolve} : $SOCKS4_RESOLVE;
+    
+    @{${*$client}->{SOCKS}->{COMMAND}} = ();
 
     #--------------------------------------------------------------------------
     # Read the auth mechanisms
@@ -1107,7 +1174,7 @@ sub _socks4_accept_command
         );
     }
     
-    if($SOCKS4_RESOLVE && $dstaddr =~ /^0\.0\.0\.[1-9]/)
+    if($resolve && $dstaddr =~ /^0\.0\.0\.[1-9]/)
     { # socks4a
         my $dsthost = '';
         
@@ -1158,7 +1225,7 @@ sub _socks4_accept_command
         return;
     }
     
-    ${*$client}->{SOCKS}->{COMMAND} = [$cmd, $dstaddr, $dstport];
+    @{${*$client}->{SOCKS}->{COMMAND}} = ($cmd, $dstaddr, $dstport);
     
     return 1;
 }
@@ -1249,6 +1316,7 @@ sub command_reply
 ###############################################################################
 sub dst
 {
+    my $self = shift;
     return (${*$self}->{SOCKS}->{DstAddr}, ${*$self}->{SOCKS}->{DstPort});
 }
 
@@ -1262,7 +1330,7 @@ sub _socks_send
     my $self = shift;
     my $data = shift;
     
-    my $blocking = $self->blocking(0) if(${*$self}{io_socket_timeout});
+    my $blocking = $self->blocking(0) if ${*$self}{io_socket_timeout};
     
     my $selector = IO::Select->new($self);
     my $start = time();
@@ -1429,24 +1497,9 @@ __END__
 
 =head1 NAME
 
-IO::Socket::Socks
+IO::Socket::Socks - Provides a way to create socks client or server both 4 and 5 version.
 
 =head1 SYNOPSIS
-
-Provides a way to create socks client or server both 4 and 5 version.
-
-=head1 DESCRIPTION
-
-IO::Socket::Socks connects to a SOCKS proxy, tells it to open a
-connection to a remote host/port when the object is created.  The
-object you receive can be used directly as a socket for sending and
-receiving data from the remote host. In addition to create socks client
-this module could be used to create socks server. See examples below.
-
-=head1 EXAMPLES
-
-For complete examples of socks 4/5 client and server see `examples'
-subdirectory in the distribution.
 
 =head2 Client
 
@@ -1512,73 +1565,147 @@ subdirectory in the distribution.
       return 0;
   }
 
+=head1 DESCRIPTION
+
+IO::Socket::Socks connects to a SOCKS proxy, tells it to open a
+connection to a remote host/port when the object is created.  The
+object you receive can be used directly as a socket for sending and
+receiving data from the remote host. In addition to create socks client
+this module could be used to create socks server. See examples below.
+
+=head1 EXAMPLES
+
+For complete examples of socks 4/5 client and server see `examples'
+subdirectory in the distribution.
 
 =head1 METHODS
 
-=head2 new( %cfg )
+=head2 Socks Client
 
-Creates a new IO::Socket::Socks object.  It takes the following
+=head3
+new( %cfg )
+
+Creates a new IO::Socket::Socks client object.  It takes the following
 config hash:
 
-=head3 Client and Server
-
-  SocksVersion => 4 for socks v4; 5 for socks v5. Default is 5
-
+  SocksVersion => 4 for socks v4, 5 for socks v5. Default is 5
+  
+  Timeout => read/write/connect/accept timeout for the socket
+  
+  SocksResolve => resolve host name to ip by proxy server or 
+                  not (will resolve by client). This
+                  overrides value of $SOCKS4_RESOLVE or $SOCKS5_RESOLVE
+                  variable. Boolean.
+  
   SocksDebug => This will cause all of the SOCKS traffic to
                 be presented on the command line in a form
-                similar to the tables in the RFCs.
-                
-  Timeout => read/write/connect/accept timeout for the socket
-
-=head3 Client
-
+                similar to the tables in the RFCs. Boolean.
+  
   ProxyAddr => Hostname of the proxy
-
+  
   ProxyPort => Port of the proxy
   
   ConnectAddr => Hostname of the remote machine
-
+  
   ConnectPort => Port of the remote machine
-
+  
+  BindAddr => Hostname of the remote machine which will
+              connect to the proxy server after bind request
+  
+  BindPort => Port of the remote machine which will
+              connect to the proxy server after bind request
+  
   AuthType => What kind of authentication to support:
-                none       - no authentication (default)
-                userpass  - Username/Password. For socks5
-                proxy only.
-
+              none       - no authentication (default)
+              userpass  - Username/Password. For socks5
+              proxy only.
+  
   RequireAuth => Do not send ANON as a valid auth mechanism.
                  For socks5 proxy only
-
+  
   Username => For socks5 if AuthType is set to userpass, then
               you must provide a username. For socks4 proxy with
               this option you can specify userid.
-
+  
   Password => If AuthType is set to userpass, then you must
               provide a password. For socks5 proxy only.
 
-=head3 Server
+The following options should be specified:
 
-  ProxyAddr => Local host bind	address
+  ProxyAddr and ProxyPort
+  ConnectAddr and ConnectPort or BindAddr and BindPort
+
+Other options are facultative.
+
+=head3
+accept( )
+
+Accept an incoming connection after bind request. On failed returns undef.
+On success returns socket. No new socket created, returned socket is same
+on which this method was called. Because accept(2) is not invoked on the
+client side, socks server calls accept(2) and proxify all traffic via socket
+opened by client bind request. You can call accept only once on IO::Socket::Socks
+client socket.
+
+=head3
+dst( )
+
+Return (host, port) of the remote host after connect/accept or socks server
+after bind.
+
+=head2 Socks Server
+
+=head3
+new( %cfg )
+
+Creates a new IO::Socket::Socks server object.  It takes the following
+config hash:
+
+  SocksVersion => 4 for socks v4, 5 for socks v5. Default is 5
   
-  ProxyPort => Local host bind	port
+  Timeout => Timeout value for various operations
+  
+  SocksResolve => For socks v5: return destination address to the client
+                  in form of 4 bytes if true, otherwise in form of host
+                  length and host name.
+                  For socks v4: allow use socks4a protocol extension if
+                  true and not otherwise.
+                  This overrides value of $SOCKS4_RESOLVE or $SOCKS5_RESOLVE.
+  
+  SocksDebug => This will cause all of the SOCKS traffic to
+                be presented on the command line in a form
+                similar to the tables in the RFCs. Boolean.
+  
+  ProxyAddr => Local host bind address
+  
+  ProxyPort => Local host bind port
   
   UserAuth => Reference to a function that returns 1 if client
               allowed to use socks server, 0 otherwise. For
               socks5 proxy it takes login and password as
               arguments. For socks4 argument is userid.
-              
+  
   RequireAuth => Not allow anonymous access for socks5 proxy.
   
   Listen => Same as IO::Socket::INET listen option. Should be
-            specified as number > 0 for the server.
+            specified as number > 0.
 
-=head2 accept( )
+The following options should be specified:
+
+  Listen
+  ProxyAddr
+  ProxyPort
+
+Other options are facultative.
+
+=head3 accept( )
 
 Accept an incoming connection and return a new IO::Socket::Socks
 object that represents that connection.  You must call command()
 on this to find out what the incoming connection wants you to do,
 and then call command_reply() to send back the reply.
 
-=head2 command( )
+=head3 command( )
 
 After you call accept() the client has sent the command they want
 you to process.  This function returns a reference to an array with
@@ -1586,7 +1713,7 @@ the following format:
 
   [ COMMAND, HOST, PORT ]
 
-=head2 command_reply( REPLY CODE, HOST, PORT )
+=head3 command_reply( REPLY CODE, HOST, PORT )
 
 After you call command() the client needs to be told what the result
 is.  The REPLY CODE is as follows (integer value):
@@ -1608,6 +1735,7 @@ is.  The REPLY CODE is as follows (integer value):
   7: Command Not Supported
   8: Address Not Supported
 
+You can also use module constans. See below.
 HOST and PORT are the resulting host and port that you use for the
 command.
 
@@ -1625,6 +1753,7 @@ by proxy server, otherwise resolving will be done locally. Resolving
 host by socks proxy version 4 is extension to the protocol also known
 as socks4a. So, only socks4a proxy  supports resolving of hostnames.
 Default value of this variable is false. This variable is not importable.
+See also `SocksResolve' parameter in the constructor.
 
 =head2 $SOCKS5_RESOLVE
 
@@ -1632,6 +1761,37 @@ If this variable has true value resolving of host names will be done
 by proxy server, otherwise resolving will be done locally. Note: some
 bugous socks5 servers doesn't support resolving of host names. Default
 value is true. This variable is not importable.
+See also `SocksResolve' parameter in the constructor.
+
+=head1 CONSTANTS
+
+The following constants could be imported manually or using `:constans' tag:
+
+  SOCKS5_VER
+  SOCKS4_VER
+  ADDR_IPV4
+  ADDR_DOMAINNAME
+  ADDR_IPV6
+  CMD_CONNECT
+  CMD_BIND
+  AUTHMECH_ANON
+  AUTHMECH_USERPASS
+  AUTHMECH_INVALID
+  AUTHREPLY_SUCCESS
+  AUTHREPLY_FAILURE
+  REPLY_SUCCESS
+  REPLY_GENERAL_FAILURE
+  REPLY_CONN_NOT_ALLOWED
+  REPLY_NETWORK_UNREACHABLE
+  REPLY_HOST_UNREACHABLE
+  REPLY_CONN_REFUSED
+  REPLY_TTL_EXPIRED
+  REPLY_CMD_NOT_SUPPORTED
+  REPLY_ADDR_NOT_SUPPORTED
+  REQUEST_GRANTED
+  REQUEST_FAILED
+  REQUEST_REJECTED_IDENTD
+  REQUEST_REJECTED_USERID
 
 =head1 AUTHOR
 
@@ -1642,9 +1802,6 @@ Now maintained by Oleg G <oleg@cpan.org>
 =head1 COPYRIGHT
 
 This module is free software, you can redistribute it and/or modify
-it under the same terms as Perl itself.
+it under the terms of LGPL license.
 
 =cut
-
-#XXX document socks5 rfcs
-#XXX document SOCKS_ERROR
