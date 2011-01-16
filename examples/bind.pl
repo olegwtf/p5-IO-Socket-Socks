@@ -4,7 +4,7 @@ use lib '../lib';
 use IO::Socket::Socks;
 use strict;
 
-# example of using socks bind with FTP active control connection
+# example of using socks bind with FTP active data connection
 
 use constant
 {
@@ -16,7 +16,7 @@ use constant
     SOCKS_PORT => 1080
 };
 
-# create primary connection
+# create control connection
 my $primary = IO::Socket::Socks->new(
     ConnectAddr => FTP_HOST,
     ConnectPort => FTP_PORT,
@@ -26,7 +26,7 @@ my $primary = IO::Socket::Socks->new(
     Timeout => 30
 ) or die $SOCKS_ERROR;
 
-# create secondary connection
+# create data connection
 my $secondary = IO::Socket::Socks->new(
     BindAddr => FTP_HOST,
     BindPort => FTP_PORT,

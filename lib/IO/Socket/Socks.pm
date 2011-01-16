@@ -1765,7 +1765,7 @@ See also `SocksResolve' parameter in the constructor.
 
 =head1 CONSTANTS
 
-The following constants could be imported manually or using `:constans' tag:
+The following constants could be imported manually or using `:constants' tag:
 
   SOCKS5_VER
   SOCKS4_VER
@@ -1802,6 +1802,6 @@ Now maintained by Oleg G <oleg@cpan.org>
 =head1 COPYRIGHT
 
 This module is free software, you can redistribute it and/or modify
-it under the terms of LGPL license.
+it under the terms of LGPL.
 
 =cut
