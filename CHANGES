@@ -1,3 +1,9 @@
+0.4
+===
+  - UDP associate support added. It closes Bug #39216
+  - method new_from_socket() added. It needed for IO::Socket::Socks::Wrapper module
+  - command() method on the client added. It allows to create socks chains and other cool things
+
 0.3
 ===
   - clarified the issue with the license (Bug #44047)

@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 
 # Simple socks4 server
 # implemented with IO::Socket::Socks module
@@ -12,7 +12,7 @@ use strict;
 $IO::Socket::Socks::SOCKS4_RESOLVE = 1;
 
 # create socks server
-my $server = IO::Socket::Socks->new(SocksVersion => 4, SocksDebug => 1, ProxyAddr => 'localhost', ProxyPort => 1090, Listen => 10)
+my $server = IO::Socket::Socks->new(SocksVersion => 4, SocksDebug => 1, ProxyAddr => 'localhost', ProxyPort => 1080, Listen => 10)
     or die $SOCKS_ERROR;
 
 # accept connections

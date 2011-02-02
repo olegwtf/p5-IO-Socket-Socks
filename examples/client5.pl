@@ -1,9 +1,10 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 
 # Simple socks5 client
 # gets google.com main page
 # implemented with IO::Socket::Socks
 
+use lib '../lib';
 use strict;
 use IO::Socket::Socks;
 
@@ -11,7 +12,7 @@ use IO::Socket::Socks;
 #$IO::Socket::Socks::SOCKS5_RESOLVE = 0;
 
 my $socks = new IO::Socket::Socks(ProxyAddr=>"127.0.0.1",
-                                  ProxyPort=>"1090",
+                                  ProxyPort=>"1080",
                                   ConnectAddr=>"www.google.com",
                                   ConnectPort=>80,
                                   # uncomment lines below if you want to use authentication

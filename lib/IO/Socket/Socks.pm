@@ -38,6 +38,7 @@ require Exporter;
     ADDR_IPV6
     CMD_CONNECT
     CMD_BIND
+    CMD_UDPASSOC
     AUTHMECH_ANON
     AUTHMECH_USERPASS
     AUTHMECH_INVALID
@@ -65,6 +66,7 @@ require Exporter;
     ADDR_IPV6
     CMD_CONNECT
     CMD_BIND
+    CMD_UDPASSOC
     AUTHMECH_ANON
     AUTHMECH_USERPASS
     AUTHMECH_INVALID
@@ -85,7 +87,7 @@ require Exporter;
     REQUEST_REJECTED_USERID
 )]);
 
-$VERSION = "0.3";
+$VERSION = "0.4";
 $SOCKS5_RESOLVE = 1;
 $SOCKS4_RESOLVE = 0;
 
@@ -98,7 +100,7 @@ use constant ADDR_IPV6       => 4;
 
 use constant CMD_CONNECT  => 1;
 use constant CMD_BIND     => 2;
-#use constant CMD_UDPASSOC => 3;
+use constant CMD_UDPASSOC => 3;
 
 use constant AUTHMECH_ANON     => 0;
 #use constant AUTHMECH_GSSAPI   => 1;
@@ -148,6 +150,19 @@ $CODES{REPLY}->{&REQUEST_REJECTED_USERID} = "request rejected because the client
 #------------------------------------------------------------------------------
 # sub new is handled by IO::Socket::INET
 #------------------------------------------------------------------------------
+sub new_from_socket
+{
+    my ($class, $sock, %arg) = @_;
+    
+    bless $sock, $class;
+    
+    $sock->autoflush(1);
+    ${*$sock}{'io_socket_timeout'} = delete $arg{Timeout};
+    
+    return scalar(%arg) ? $sock->configure(\%arg)
+            : $sock;
+}
+
 
 ###############################################################################
 #
@@ -158,7 +173,61 @@ sub configure
 {
     my $self = shift;
     my $args = shift;
+    
+    $self->_configure($args)
+        or return;
+    
+    ${*$self}->{SOCKS}->{ProxyAddr} =
+        (exists($args->{ProxyAddr}) ?
+         delete($args->{ProxyAddr}) :
+         undef
+        );
 
+    ${*$self}->{SOCKS}->{ProxyPort} =
+        (exists($args->{ProxyPort}) ?
+         delete($args->{ProxyPort}) :
+         undef
+        );
+    
+    ${*$self}->{SOCKS}->{COMMAND} = [];
+
+    if (exists($args->{Listen}))
+    {
+        $args->{LocalAddr} = ${*$self}->{SOCKS}->{ProxyAddr};
+        $args->{LocalPort} = ${*$self}->{SOCKS}->{ProxyPort};
+        $args->{Reuse} = 1;
+        ${*$self}->{SOCKS}->{Listen} = 1;
+    }
+    elsif(${*$self}->{SOCKS}->{ProxyAddr} && ${*$self}->{SOCKS}->{ProxyPort})
+    {
+        $args->{PeerAddr} = ${*$self}->{SOCKS}->{ProxyAddr};
+        $args->{PeerPort} = ${*$self}->{SOCKS}->{ProxyPort};
+    }
+
+    unless(defined ${*$self}->{SOCKS}->{TCP})
+    {
+        $args->{Proto} = "tcp";
+        $args->{Type} = SOCK_STREAM;
+    }
+    elsif(! defined $args->{Proto})
+    {
+        $args->{Proto} = "udp";
+        $args->{Type} = SOCK_DGRAM;
+    }
+
+    $self->SUPER::configure($args);
+}
+
+###############################################################################
+#
+# _configure - reusable configure operations
+#
+###############################################################################
+sub _configure
+{
+    my $self = shift;
+    my $args = shift;
+    
     ${*$self}->{SOCKS}->{Version} =
         (exists($args->{SocksVersion}) ?
           ($args->{SocksVersion} == 4 || $args->{SocksVersion} == 5 ?
@@ -166,18 +235,6 @@ sub configure
             croak("Unsupported socks version specified. Should be 4 or 5")
           ) :
           5
-        );
-    
-    ${*$self}->{SOCKS}->{ProxyAddr} =
-        (exists($args->{ProxyAddr}) ?
-         delete($args->{ProxyAddr}) :
-         croak("You must provide a ProxyAddr to either connect to, or listen on.")
-        );
-
-    ${*$self}->{SOCKS}->{ProxyPort} =
-        (exists($args->{ProxyPort}) ?
-         delete($args->{ProxyPort}) :
-         croak("You must provide a ProxyPort to either connect to, or listen on.")
         );
     
     ${*$self}->{SOCKS}->{AuthType} =
@@ -238,51 +295,35 @@ sub configure
             (${*$self}->{SOCKS}->{AuthType} eq "userpass")) ||
             (exists($args->{Listen}) &&
             defined(${*$self}->{SOCKS}->{UserAuth})));
-    
-    ${*$self}->{SOCKS}->{COMMAND} = [];
-    
+            
     if(exists($args->{BindAddr}) && exists($args->{BindPort}))
     {
         ${*$self}->{SOCKS}->{CmdAddr} = delete($args->{BindAddr});
         ${*$self}->{SOCKS}->{CmdPort} = delete($args->{BindPort});
         ${*$self}->{SOCKS}->{Bind} = 1;
     }
+    elsif(exists($args->{UdpAddr}) && exists($args->{UdpPort}))
+    {
+        if(${*$self}->{SOCKS}->{Version} == 4) {
+            croak("Socks v4 doesn't support UDP association");
+        }
+        ${*$self}->{SOCKS}->{CmdAddr} = delete($args->{UdpAddr});
+        ${*$self}->{SOCKS}->{CmdPort} = delete($args->{UdpPort});
+        $args->{LocalAddr} = ${*$self}->{SOCKS}->{CmdAddr};
+        $args->{LocalPort} = ${*$self}->{SOCKS}->{CmdPort};
+        ${*$self}->{SOCKS}->{TCP} = __PACKAGE__->new( # TCP backend for UDP socket
+            Timeout => $args->{Timeout},
+            Proto => 'tcp'
+        ) or return;
+    }
     elsif(exists($args->{ConnectAddr}) && exists($args->{ConnectPort}))
     {
         ${*$self}->{SOCKS}->{CmdAddr} = delete($args->{ConnectAddr});
         ${*$self}->{SOCKS}->{CmdPort} = delete($args->{ConnectPort});
     }
-    elsif(!exists($args->{Listen}))
-    {
-        croak("You must provide ConnectAddr and ConnectPort or BindAddr and BindPort");
-    }
-
-    if (exists($args->{Listen}))
-    {
-        ${*$self}->{SOCKS}->{Listen} = 1;
-        $args->{LocalAddr} = ${*$self}->{SOCKS}->{ProxyAddr};
-        $args->{LocalPort} = ${*$self}->{SOCKS}->{ProxyPort};
-        $args->{Reuse} = 1;
-    }
-    else
-    {
-        $args->{PeerAddr} = ${*$self}->{SOCKS}->{ProxyAddr};
-        $args->{PeerPort} = ${*$self}->{SOCKS}->{ProxyPort};
-    }
-
-    $args->{Proto} = "tcp";
-    $args->{Type} = SOCK_STREAM;
-
-    my $status = $self->SUPER::configure($args);
-    return unless $status;
-
-    #--------------------------------------------------------------------------
-    # We are configured... Return the object.
-    #--------------------------------------------------------------------------
-    return $status;
+    
+    return 1;
 }
-
-
 
 
 ###############################################################################
@@ -308,16 +349,32 @@ sub connect
     #--------------------------------------------------------------------------
     # Establish a connection
     #--------------------------------------------------------------------------
-    $self = $self->SUPER::connect(@_);
+    my $sock = defined( ${*$self}->{SOCKS}->{TCP} ) ? 
+                ${*$self}->{SOCKS}->{TCP}->SUPER::connect(@_)
+                :
+                $self->SUPER::connect(@_);
 
-    if (!$self)
+    if (!$sock)
     {
         $SOCKS_ERROR = "Connection to proxy failed.";
         return;
     }
 
+    $self->_connect();
+}
+
+###############################################################################
+#
+# _connect - reusable connect operations
+#
+###############################################################################
+sub _connect
+{
+    my $self = shift;
+    
     #--------------------------------------------------------------------------
-    # If socks version is 4
+    # For socks4 version
+    # Send the command (CONNECT/BIND)
     #--------------------------------------------------------------------------    
     if(${*$self}->{SOCKS}->{Version} == 4)
     {
@@ -341,12 +398,17 @@ sub connect
     #--------------------------------------------------------------------------
     # Send the command (CONNECT/BIND/UDP)
     #--------------------------------------------------------------------------
-    return unless $self->_socks5_connect_command( ${*$self}->{SOCKS}->{Bind} ? CMD_BIND : CMD_CONNECT ) &&
+    return unless $self->_socks5_connect_command(
+                    ${*$self}->{SOCKS}->{Bind} ?
+                            CMD_BIND :
+                            ${*$self}->{SOCKS}->{TCP} ?
+                                CMD_UDPASSOC :
+                                CMD_CONNECT
+                  ) &&
                   $self->_socks5_connect_reply();
 
     return $self;
 }
-
 
 ###############################################################################
 #
@@ -357,6 +419,10 @@ sub _socks5_connect
 {
     my $self = shift;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
+    my $sock = defined( ${*$self}->{SOCKS}->{TCP} ) ?
+                ${*$self}->{SOCKS}->{TCP}
+                :
+                $self;
 
     #--------------------------------------------------------------------------
     # Send the auth mechanisms
@@ -378,7 +444,7 @@ sub _socks5_connect
         }
     }
     
-    $self->_socks_send(pack('CC', SOCKS5_VER, $nmethods) . $methods)
+    $sock->_socks_send(pack('CC', SOCKS5_VER, $nmethods) . $methods)
         or return _timeout();
     
     if($debug)
@@ -400,7 +466,7 @@ sub _socks5_connect
     # | 1  |   1    |
     # +----+--------+
     
-    my $reply = $self->_socks_read(2)
+    my $reply = $sock->_socks_read(2)
         or return _timeout();
     
     my ($version, $auth_method) = unpack('CC', $reply);
@@ -432,6 +498,10 @@ sub _socks5_connect_auth
 {
     my $self = shift;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
+    my $sock = defined( ${*$self}->{SOCKS}->{TCP} ) ?
+                ${*$self}->{SOCKS}->{TCP}
+                :
+                $self;
     
     #--------------------------------------------------------------------------
     # Send the auth
@@ -446,7 +516,7 @@ sub _socks5_connect_auth
     my $passwd = ${*$self}->{SOCKS}->{Password};
     my $ulen = length($uname);
     my $plen = length($passwd);
-    $self->_socks_send(pack('CC', 1, $ulen) . $uname . pack('C', $plen) . $passwd)
+    $sock->_socks_send(pack('CC', 1, $ulen) . $uname . pack('C', $plen) . $passwd)
         or return _timeout();
     
     if($debug)
@@ -470,7 +540,7 @@ sub _socks5_connect_auth
     # | 1  |   1    |
     # +----+--------+
     
-    my $reply = $self->_socks_read(2)
+    my $reply = $sock->_socks_read(2)
         or return _timeout();
 
     my ($ver, $status) = unpack('CC', $reply);
@@ -505,6 +575,10 @@ sub _socks5_connect_command
     my $command = shift;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
     my $resolve = defined(${*$self}->{SOCKS}->{Resolve}) ? ${*$self}->{SOCKS}->{Resolve} : $SOCKS5_RESOLVE;
+    my $sock = defined( ${*$self}->{SOCKS}->{TCP} ) ?
+                ${*$self}->{SOCKS}->{TCP}
+                :
+                $self;
     
     #--------------------------------------------------------------------------
     # Send the command
@@ -519,7 +593,7 @@ sub _socks5_connect_command
     my $dstaddr = $resolve ? ${*$self}->{SOCKS}->{CmdAddr} : inet_aton(${*$self}->{SOCKS}->{CmdAddr});
     my $hlen = length($dstaddr) if $resolve;
     my $dstport = pack('n', ${*$self}->{SOCKS}->{CmdPort});
-    $self->_socks_send(pack('CCCC', SOCKS5_VER, $command, 0, $atyp) . (defined($hlen) ? pack('C', $hlen) : '') . $dstaddr . $dstport)
+    $sock->_socks_send(pack('CCCC', SOCKS5_VER, $command, 0, $atyp) . (defined($hlen) ? pack('C', $hlen) : '') . $dstaddr . $dstport)
         or return _timeout();
 
     if($debug)
@@ -545,6 +619,10 @@ sub _socks5_connect_reply
 {
     my $self = shift;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
+    my $sock = defined( ${*$self}->{SOCKS}->{TCP} ) ?
+                ${*$self}->{SOCKS}->{TCP}
+                :
+                $self;
     
     #--------------------------------------------------------------------------
     # Read the reply
@@ -555,7 +633,7 @@ sub _socks5_connect_reply
     # | 1  |  1  | X'00' |  1   | Variable |    2     |
     # +----+-----+-------+------+----------+----------+
     
-    my $reply = $self->_socks_read(4)
+    my $reply = $sock->_socks_read(4)
         or return _timeout();
     
     my ($ver, $rep, $rsv, $atyp) = unpack('CCCC', $reply);
@@ -574,11 +652,11 @@ sub _socks5_connect_reply
     
     if ($atyp == ADDR_DOMAINNAME)
     {
-        defined( $reply = $self->_socks_read() )
+        defined( $reply = $sock->_socks_read() )
             or return _timeout();
         
         my $hlen = unpack('C', $reply);
-        $bndaddr = $self->_socks_read($hlen)
+        $bndaddr = $sock->_socks_read($hlen)
             or return _timeout();
         
         if($debug)
@@ -591,7 +669,7 @@ sub _socks5_connect_reply
     }
     elsif ($atyp == ADDR_IPV4)
     {
-        $reply = $self->_socks_read(4)
+        $reply = $sock->_socks_read(4)
             or return _timeout();
         $bndaddr = length($reply) == 4 ? inet_ntoa($reply) : undef;
         
@@ -602,11 +680,11 @@ sub _socks5_connect_reply
     }
     else
     {
-        $SOCKS_ERROR = 'Socks server returns unsupported address type';
+        $SOCKS_ERROR = 'Unsupported address type returned by socks server';
         return;
     }
     
-    $reply = $self->_socks_read(2)
+    $reply = $sock->_socks_read(2)
         or return _timeout();
     $bndport = unpack('n', $reply);
     
@@ -1287,7 +1365,29 @@ sub command
 {
     my $self = shift;
 
-    return ${*$self}->{SOCKS}->{COMMAND};
+    if(${*$self}->{SOCKS}->{Listen})
+    {
+        return ${*$self}->{SOCKS}->{COMMAND};
+    }
+    else
+    {
+        my @keys = qw(Version AuthType RequireAuth UserAuth Username Password
+                      Debug Resolve AuthMethods CmdAddr CmdPort Bind TCP);
+        
+        my %tmp;
+        $tmp{$_} = ${*$self}->{SOCKS}->{$_} for @keys;
+        
+        my %args = @_;
+        $self->_configure(\%args);
+        
+        if( $self->_connect() )
+        {
+            return 1;
+        }
+        
+        ${*$self}->{SOCKS}->{$_} = $tmp{$_} for @keys;
+        return 0;
+    }
 }
 
 ###############################################################################
@@ -1311,13 +1411,166 @@ sub command_reply
 
 ###############################################################################
 #
-# dst - access to the address and port selected by socks server when connect/bind
+# dst - access to the address and port selected by socks server when connect/bind/udpassoc
 #
 ###############################################################################
 sub dst
 {
     my $self = shift;
     return (${*$self}->{SOCKS}->{DstAddr}, ${*$self}->{SOCKS}->{DstPort});
+}
+
+###############################################################################
+#
+# send - send UDP datagram
+#
+###############################################################################
+sub send
+{
+    my $self = shift;
+    
+    unless(defined ${*$self}->{SOCKS}->{TCP})
+    {
+        return $self->SUPER::send(@_);
+    }
+    
+    my ($msg, $flags, $peer) = @_;
+    my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
+    my $resolve = defined(${*$self}->{SOCKS}->{Resolve}) ? ${*$self}->{SOCKS}->{Resolve} : $SOCKS5_RESOLVE;
+    
+    croak "send: Cannot determine peer address"
+        unless defined $peer;
+        
+    my ($dstport, $dstaddr) = sockaddr_in($peer);
+    my ($sndaddr, $sndport) = $self->dst;
+    if($sndaddr eq '0.0.0.0')
+    {
+        $sndaddr = ${*$self}->{SOCKS}->{ProxyAddr};
+    }
+    $sndaddr = inet_aton($sndaddr);
+    $peer = sockaddr_in($sndport, $sndaddr);
+    
+    my ($atyp, $hlen);
+    if($resolve)
+    {
+        $atyp = ADDR_DOMAINNAME;
+        $dstaddr = inet_ntoa($dstaddr);
+        $hlen = length($dstaddr);
+    }
+    else
+    {
+        $atyp = ADDR_IPV4;
+    }
+    
+    my $msglen = length($msg) if $debug;
+    
+    # we need to add socks header to the message
+    # +----+------+------+----------+----------+----------+
+    # |RSV | FRAG | ATYP | DST.ADDR | DST.PORT |   DATA   |
+    # +----+------+------+----------+----------+----------+
+    # | 2  |  1   |  1   | Variable |    2     | Variable |
+    # +----+------+------+----------+----------+----------+
+    $msg = pack('C4', 0, 0, 0, $atyp) . ($resolve ? pack('C', $hlen) : '') . $dstaddr . pack('n', $dstport) . $msg;
+    
+    if($debug)
+    {
+        $debug->add(
+            rsv => '00',
+            frag => '0',
+            atyp => $atyp
+        );
+        $debug->add(hlen => $hlen) if $resolve;
+        $debug->add(
+            dstaddr => $resolve ? $dstaddr : (length($dstaddr) == 4 ? inet_ntoa($dstaddr) : undef),
+            dstport => $dstport,
+            data => "...($msglen)"
+        );
+        $debug->show('Send: ');
+    }
+    
+    $self->SUPER::send($msg, $flags, $peer);
+}
+
+###############################################################################
+#
+# recv - receive UDP datagram
+#
+###############################################################################
+sub recv
+{
+    my $self = shift;
+    
+    unless(defined ${*$self}->{SOCKS}->{TCP})
+    {
+        return $self->SUPER::recv(@_);
+    }
+    
+    my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
+    
+    defined(my $peer = $self->SUPER::recv($_[0], $_[1]+262, $_[2]) )
+        or return;
+    
+    # we need to remove socks header from the message
+    # +----+------+------+----------+----------+----------+
+    # |RSV | FRAG | ATYP | DST.ADDR | DST.PORT |   DATA   |
+    # +----+------+------+----------+----------+----------+
+    # | 2  |  1   |  1   | Variable |    2     | Variable |
+    # +----+------+------+----------+----------+----------+
+    my $rsv = join('', unpack('C2', $_[0]));
+    substr($_[0], 0, 2) = '';
+    
+    my ($frag, $atyp) = unpack('C2', $_[0]);
+    substr($_[0], 0, 2) = '';
+    
+    if($debug)
+    {
+        $debug->add(
+            rsv => $rsv,
+            frag => $frag,
+            atyp => $atyp
+        );
+    }
+    
+    my $dstaddr;
+    if($atyp == ADDR_DOMAINNAME)
+    {
+        my $hlen = unpack('C', $_[0]);
+        $dstaddr = substr($_[0], 1, $hlen);
+        substr($_[0], 0, $hlen+1) = '';
+        
+        if($debug)
+        {
+            $debug->add(
+                hlen => $hlen
+            );
+        }
+    }
+    elsif($atyp == ADDR_IPV4)
+    {
+        $dstaddr = substr($_[0], 0, 4);
+        $dstaddr = length($dstaddr) == 4 ? inet_ntoa($dstaddr) : undef;
+        substr($_[0], 0, 4) = '';
+    }
+    else
+    {
+        $SOCKS_ERROR = 'Unsupported address type returned by socks server';
+        return;
+    }
+    
+    my $dstport = unpack('n', $_[0]);
+    substr($_[0], 0, 2) = '';
+    
+    if($debug)
+    {
+        $debug->add(
+            dstaddr => $dstaddr,
+            dstport => $dstport,
+            data => "...(" . length($_[0]) . ")"
+        );
+        $debug->show('Recv: ');
+    }
+    
+    return $peer;
 }
 
 ###############################################################################
@@ -1582,10 +1835,12 @@ subdirectory in the distribution.
 
 =head2 Socks Client
 
-=head3
-new( %cfg )
+=head3 new( %cfg )
 
-Creates a new IO::Socket::Socks client object.  It takes the following
+=head3 new_from_socket($socket, %cfg)
+
+Creates a new IO::Socket::Socks client object.  new_from_socket() is the same as
+new(), but allows to create object from an existing socket. Both takes the following
 config hash:
 
   SocksVersion => 4 for socks v4, 5 for socks v5. Default is 5
@@ -1611,6 +1866,12 @@ config hash:
   
   BindAddr => Hostname of the remote machine which will
               connect to the proxy server after bind request
+              
+  UdpAddr => Associate UDP socket on the server with this client
+             hostname
+  
+  UdpPort => Associate UDP socket on the server with this client
+             port
   
   BindPort => Port of the remote machine which will
               connect to the proxy server after bind request
@@ -1633,7 +1894,7 @@ config hash:
 The following options should be specified:
 
   ProxyAddr and ProxyPort
-  ConnectAddr and ConnectPort or BindAddr and BindPort
+  ConnectAddr and ConnectPort or BindAddr and BindPort or UdpAddr and UdpPort
 
 Other options are facultative.
 
@@ -1648,17 +1909,76 @@ opened by client bind request. You can call accept only once on IO::Socket::Sock
 client socket.
 
 =head3
+command( %cfg )
+
+Allows to execute socks command on already opened socket. Thus you
+can create socks chain:
+
+    my @chain = (
+        {ProxyAddr => '10.0.0.1', ProxyPort => 1080, SocksVersion => 5, SocksDebug => 1},
+        {ProxyAddr => '10.0.0.2', ProxyPort => 1080, SocksVersion => 4, SocksDebug => 1},
+        {ProxyAddr => '10.0.0.3', ProxyPort => 1080, SocksVersion => 5, SocksDebug => 1},
+        {ProxyAddr => '10.0.0.4', ProxyPort => 1080, SocksVersion => 4, SocksDebug => 1},
+    );
+
+    my $dst = {ConnectAddr => 'www.google.com', ConnectPort => 80};
+
+    my $sock;
+    while (my $link = shift @chain) {
+        unless($sock) {
+            $sock = IO::Socket::Socks->new(
+                %$link, Timeout => 10,
+                @chain ? (ConnectAddr => $chain[0]->{ProxyAddr}, ConnectPort => $chain[0]->{ProxyPort})
+                       : %$dst
+            );
+        }
+        else {
+            $sock->command(
+                %$link,
+                @chain ? (ConnectAddr => $chain[0]->{ProxyAddr}, ConnectPort => $chain[0]->{ProxyPort})
+                       : %$dst
+            );
+        }
+    }
+
+    unless($sock) {
+        die('Bad chain');
+    }
+
+%cfg is like hash in the constructor. Only options listed below makes sence:
+
+  ConnectAddr
+  ConnectPort
+  BindAddr
+  BindPort
+  UdpAddr
+  UdpPort
+  SocksVersion
+  SocksDebug
+  SocksResolve
+  AuthType
+  RequireAuth
+  Username
+  Password
+  AuthMethods
+
+Values of the other options (Timeout for example) inherited from the constructor.
+Options like ProxyAddr and ProxyPort are not included.
+
+=head3
 dst( )
 
-Return (host, port) of the remote host after connect/accept or socks server
-after bind.
+Return (host, port) of the remote host after connect/accept or socks server (host, port)
+after bind/udpassoc.
 
 =head2 Socks Server
 
-=head3
-new( %cfg )
+=head3 new( %cfg )
 
-Creates a new IO::Socket::Socks server object.  It takes the following
+=head3 new_from_socket($socket, %cfg)
+
+Creates a new IO::Socket::Socks server object. new_from_socket() is the same as
+new(), but allows to create object from an existing socket. Both takes the following
 config hash:
 
   SocksVersion => 4 for socks v4, 5 for socks v5. Default is 5
@@ -1774,6 +2094,7 @@ The following constants could be imported manually or using `:constants' tag:
   ADDR_IPV6
   CMD_CONNECT
   CMD_BIND
+  CMD_UDPASSOC
   AUTHMECH_ANON
   AUTHMECH_USERPASS
   AUTHMECH_INVALID
@@ -1792,6 +2113,26 @@ The following constants could be imported manually or using `:constants' tag:
   REQUEST_FAILED
   REQUEST_REJECTED_IDENTD
   REQUEST_REJECTED_USERID
+
+=head1 BUGS
+
+The following options are not implemented and not planned:
+
+=over
+
+=item GSSAPI authentication
+
+=item UDP server side support
+
+=item IPV6 support
+
+=back
+
+However patches are welcome.
+
+=head1 SEE ALSO
+
+L<IO::Socket::Socks::Wrapper>
 
 =head1 AUTHOR
 
