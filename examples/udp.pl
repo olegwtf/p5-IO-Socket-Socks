@@ -11,7 +11,8 @@ my $sock = IO::Socket::Socks->new(
     UdpAddr => 'localhost',
     UdpPort => 8344,
     ProxyAddr => 'localhost',
-    ProxyPort => 1080
+    ProxyPort => 1080,
+    SocksDebug => 1
 ) or die $SOCKS_ERROR;
 
 my $peer = inet_aton('localhost');

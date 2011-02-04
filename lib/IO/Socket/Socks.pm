@@ -1365,7 +1365,7 @@ sub command
 {
     my $self = shift;
 
-    if(${*$self}->{SOCKS}->{Listen})
+    unless(exists ${*$self}->{SOCKS}->{AuthMethods})
     {
         return ${*$self}->{SOCKS}->{COMMAND};
     }
@@ -1912,38 +1912,7 @@ client socket.
 command( %cfg )
 
 Allows to execute socks command on already opened socket. Thus you
-can create socks chain:
-
-    my @chain = (
-        {ProxyAddr => '10.0.0.1', ProxyPort => 1080, SocksVersion => 5, SocksDebug => 1},
-        {ProxyAddr => '10.0.0.2', ProxyPort => 1080, SocksVersion => 4, SocksDebug => 1},
-        {ProxyAddr => '10.0.0.3', ProxyPort => 1080, SocksVersion => 5, SocksDebug => 1},
-        {ProxyAddr => '10.0.0.4', ProxyPort => 1080, SocksVersion => 4, SocksDebug => 1},
-    );
-
-    my $dst = {ConnectAddr => 'www.google.com', ConnectPort => 80};
-
-    my $sock;
-    while (my $link = shift @chain) {
-        unless($sock) {
-            $sock = IO::Socket::Socks->new(
-                %$link, Timeout => 10,
-                @chain ? (ConnectAddr => $chain[0]->{ProxyAddr}, ConnectPort => $chain[0]->{ProxyPort})
-                       : %$dst
-            );
-        }
-        else {
-            $sock->command(
-                %$link,
-                @chain ? (ConnectAddr => $chain[0]->{ProxyAddr}, ConnectPort => $chain[0]->{ProxyPort})
-                       : %$dst
-            );
-        }
-    }
-
-    unless($sock) {
-        die('Bad chain');
-    }
+can create socks chain. For example see L</EXAMPLES> section.
 
 %cfg is like hash in the constructor. Only options listed below makes sence:
 
@@ -2028,8 +1997,8 @@ and then call command_reply() to send back the reply.
 =head3 command( )
 
 After you call accept() the client has sent the command they want
-you to process.  This function returns a reference to an array with
-the following format:
+you to process.  This function should be called on the socket returned
+by accept(). It returns a reference to an array with the following format:
 
   [ COMMAND, HOST, PORT ]
 

@@ -22,6 +22,7 @@ my $primary = IO::Socket::Socks->new(
     ConnectPort => FTP_PORT,
     ProxyAddr => SOCKS_HOST,
     ProxyPort => SOCKS_PORT,
+    SocksVersion => 5,
     SocksDebug => 1,
     Timeout => 30
 ) or die $SOCKS_ERROR;
@@ -32,6 +33,7 @@ my $secondary = IO::Socket::Socks->new(
     BindPort => FTP_PORT,
     ProxyAddr => SOCKS_HOST,
     ProxyPort => SOCKS_PORT,
+    SocksVersion => 5,
     SocksDebug => 1,
     Timeout => 30
 ) or die $SOCKS_ERROR;
