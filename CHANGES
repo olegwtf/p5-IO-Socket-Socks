@@ -13,7 +13,7 @@
 0.2
 ===
   - fixed possible SIGPIPE (Bug #62997)
-  - bloсking reading and writing replaced by non-blocking equivalents, so `Timeout' option now documented and works
+  - blocking reading and writing replaced by non-blocking equivalents, so `Timeout' option now documented and works
   - added support for socks v4, both server and client
   - some bug fixes
   
