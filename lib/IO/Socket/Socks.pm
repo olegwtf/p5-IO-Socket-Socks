@@ -26,7 +26,7 @@ use IO::Socket;
 use IO::Select;
 use Errno qw(EWOULDBLOCK);
 use Carp;
-use vars qw( @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION $SOCKS_ERROR $SOCKS5_RESOLVE $SOCKS4_RESOLVE %CODES );
+use vars qw( @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION $SOCKS_ERROR $SOCKS5_RESOLVE $SOCKS4_RESOLVE $SOCKS_DEBUG %CODES );
 require Exporter;
 @ISA = qw(Exporter IO::Socket::INET);
 @EXPORT = qw( $SOCKS_ERROR );
@@ -90,6 +90,7 @@ require Exporter;
 $VERSION = "0.4";
 $SOCKS5_RESOLVE = 1;
 $SOCKS4_RESOLVE = 0;
+$SOCKS_DEBUG = $ENV{SOCKS_DEBUG};
 
 use constant SOCKS5_VER =>  5;
 use constant SOCKS4_VER =>  4;
@@ -276,7 +277,7 @@ sub _configure
     ${*$self}->{SOCKS}->{Debug} =
         (exists($args->{SocksDebug}) ?
          delete($args->{SocksDebug}) :
-         0
+         $SOCKS_DEBUG
         );
         
     ${*$self}->{SOCKS}->{Resolve} = 
@@ -1854,7 +1855,8 @@ config hash:
   
   SocksDebug => This will cause all of the SOCKS traffic to
                 be presented on the command line in a form
-                similar to the tables in the RFCs. Boolean.
+                similar to the tables in the RFCs. This overrides value
+                of $SOCKS_DEBUG variable. Boolean.
   
   ProxyAddr => Hostname of the proxy
   
@@ -1963,7 +1965,8 @@ config hash:
   
   SocksDebug => This will cause all of the SOCKS traffic to
                 be presented on the command line in a form
-                similar to the tables in the RFCs. Boolean.
+                similar to the tables in the RFCs. This overrides value
+                of $SOCKS_DEBUG variable. Boolean.
   
   ProxyAddr => Local host bind address
   
@@ -2051,6 +2054,12 @@ by proxy server, otherwise resolving will be done locally. Note: some
 bugous socks5 servers doesn't support resolving of host names. Default
 value is true. This variable is not importable.
 See also `SocksResolve' parameter in the constructor.
+
+=head2 $SOCKS_DEBUG
+
+Default value is $ENV{SOCKS_DEBUG}. If this variable has true value and
+no SocksDebug option in the constructor specified, then SocksDebug will
+has true value. This variable is not importable.
 
 =head1 CONSTANTS
 
