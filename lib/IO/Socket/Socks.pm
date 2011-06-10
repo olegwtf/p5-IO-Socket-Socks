@@ -28,8 +28,15 @@ use Errno qw(EWOULDBLOCK);
 use Carp;
 use vars qw( @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION $SOCKS_ERROR $SOCKS5_RESOLVE $SOCKS4_RESOLVE $SOCKS_DEBUG %CODES );
 require Exporter;
+
+use constant
+{
+    SOCKS_WANT_READ  => 20,
+    SOCKS_WANT_WRITE => 21,
+};
+
 @ISA = qw(Exporter IO::Socket::INET);
-@EXPORT = qw( $SOCKS_ERROR );
+@EXPORT = qw( $SOCKS_ERROR SOCKS_WANT_READ SOCKS_WANT_WRITE );
 @EXPORT_OK = qw(
     SOCKS5_VER
     SOCKS4_VER
@@ -58,73 +65,51 @@ require Exporter;
     REQUEST_REJECTED_IDENTD
     REQUEST_REJECTED_USERID
 );
-%EXPORT_TAGS = (constants => [qw(
-    SOCKS5_VER
-    SOCKS4_VER
-    ADDR_IPV4
-    ADDR_DOMAINNAME
-    ADDR_IPV6
-    CMD_CONNECT
-    CMD_BIND
-    CMD_UDPASSOC
-    AUTHMECH_ANON
-    AUTHMECH_USERPASS
-    AUTHMECH_INVALID
-    AUTHREPLY_SUCCESS
-    AUTHREPLY_FAILURE
-    REPLY_SUCCESS
-    REPLY_GENERAL_FAILURE
-    REPLY_CONN_NOT_ALLOWED
-    REPLY_NETWORK_UNREACHABLE
-    REPLY_HOST_UNREACHABLE
-    REPLY_CONN_REFUSED
-    REPLY_TTL_EXPIRED
-    REPLY_CMD_NOT_SUPPORTED
-    REPLY_ADDR_NOT_SUPPORTED
-    REQUEST_GRANTED
-    REQUEST_FAILED
-    REQUEST_REJECTED_IDENTD
-    REQUEST_REJECTED_USERID
-)]);
+%EXPORT_TAGS = (constants => \@EXPORT_OK);
 
 $VERSION = "0.4";
 $SOCKS5_RESOLVE = 1;
 $SOCKS4_RESOLVE = 0;
 $SOCKS_DEBUG = $ENV{SOCKS_DEBUG};
 
-use constant SOCKS5_VER =>  5;
-use constant SOCKS4_VER =>  4;
+use constant
+{
+    SOCKS5_VER =>  5,
+    SOCKS4_VER =>  4,
+    
+    ADDR_IPV4       => 1,
+    ADDR_DOMAINNAME => 3,
+    ADDR_IPV6       => 4,
 
-use constant ADDR_IPV4       => 1;
-use constant ADDR_DOMAINNAME => 3;
-use constant ADDR_IPV6       => 4;
+    CMD_CONNECT  => 1,
+    CMD_BIND     => 2,
+    CMD_UDPASSOC => 3,
 
-use constant CMD_CONNECT  => 1;
-use constant CMD_BIND     => 2;
-use constant CMD_UDPASSOC => 3;
+    AUTHMECH_ANON     => 0,
+    #AUTHMECH_GSSAPI   => 1,
+    AUTHMECH_USERPASS => 2,
+    AUTHMECH_INVALID  => 255,
+    
+    AUTHREPLY_SUCCESS  => 0,
+    AUTHREPLY_FAILURE  => 1,
+};
 
-use constant AUTHMECH_ANON     => 0;
-#use constant AUTHMECH_GSSAPI   => 1;
-use constant AUTHMECH_USERPASS => 2;
-use constant AUTHMECH_INVALID  => 255;
-
-$CODES{AUTHMECH}->[AUTHMECH_INVALID] = "No valid auth mechanisms";
-
-use constant AUTHREPLY_SUCCESS  => 0;
-use constant AUTHREPLY_FAILURE  => 1;
-
+$CODES{AUTHMECH}->[AUTHMECH_INVALID]   = "No valid auth mechanisms";
 $CODES{AUTHREPLY}->[AUTHREPLY_FAILURE] = "Failed to authenticate";
 
 # socks5
-use constant REPLY_SUCCESS             => 0;
-use constant REPLY_GENERAL_FAILURE     => 1;
-use constant REPLY_CONN_NOT_ALLOWED    => 2;
-use constant REPLY_NETWORK_UNREACHABLE => 3;
-use constant REPLY_HOST_UNREACHABLE    => 4;
-use constant REPLY_CONN_REFUSED        => 5;
-use constant REPLY_TTL_EXPIRED         => 6;
-use constant REPLY_CMD_NOT_SUPPORTED   => 7;
-use constant REPLY_ADDR_NOT_SUPPORTED  => 8;
+use constant
+{
+    REPLY_SUCCESS             => 0,
+    REPLY_GENERAL_FAILURE     => 1,
+    REPLY_CONN_NOT_ALLOWED    => 2,
+    REPLY_NETWORK_UNREACHABLE => 3,
+    REPLY_HOST_UNREACHABLE    => 4,
+    REPLY_CONN_REFUSED        => 5,
+    REPLY_TTL_EXPIRED         => 6,
+    REPLY_CMD_NOT_SUPPORTED   => 7,
+    REPLY_ADDR_NOT_SUPPORTED  => 8,
+};
 
 $CODES{REPLY}->{&REPLY_SUCCESS} = "Success";
 $CODES{REPLY}->{&REPLY_GENERAL_FAILURE} = "General failure";
@@ -138,10 +123,13 @@ $CODES{REPLY}->{&REPLY_ADDR_NOT_SUPPORTED} = "Address not supported";
 
 
 # socks4
-use constant REQUEST_GRANTED         => 90;
-use constant REQUEST_FAILED          => 91;
-use constant REQUEST_REJECTED_IDENTD => 92;
-use constant REQUEST_REJECTED_USERID => 93;
+use constant
+{
+    REQUEST_GRANTED         => 90,
+    REQUEST_FAILED          => 91,
+    REQUEST_REJECTED_IDENTD => 92,
+    REQUEST_REJECTED_USERID => 93,
+};
 
 $CODES{REPLY}->{&REQUEST_GRANTED} = "request granted";
 $CODES{REPLY}->{&REQUEST_FAILED} = "request rejected or failed";
