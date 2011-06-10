@@ -352,6 +352,12 @@ sub connect
     $self->_connect();
 }
 
+sub connected
+{
+    my $self = shift;
+    #return $self->SUPER::connected() && @{${*$self}->{SOCKS}->{queue}} == 0;
+}
+
 ###############################################################################
 #
 # _connect - reusable connect operations
@@ -367,36 +373,63 @@ sub _connect
     #--------------------------------------------------------------------------    
     if(${*$self}->{SOCKS}->{Version} == 4)
     {
-        return unless $self->_socks4_connect_command( ${*$self}->{SOCKS}->{Bind} ? CMD_BIND : CMD_CONNECT ) &&
-                      $self->_socks4_connect_reply();
-        return $self;
+        ${*$self}->{SOCKS}->{queue} = [
+            # [sub, [@args], buf, [@reads], sends_cnt]
+            [\&_socks4_connect_command, [$self, ${*$self}->{SOCKS}->{Bind} ? CMD_BIND : CMD_CONNECT], '', [], 0],
+            [\&_socks4_connect_reply, [$self], '', [], 0]
+        ];
     }
     
     #--------------------------------------------------------------------------
     # For socks5 version
     # Handle any authentication
     #--------------------------------------------------------------------------
-    my $auth_mech = $self->_socks5_connect();
-    return unless defined $auth_mech;
-
-    if ($auth_mech != AUTHMECH_ANON)
-    {
-        return unless $self->_socks5_connect_auth();
-    }
-    
-    #--------------------------------------------------------------------------
-    # Send the command (CONNECT/BIND/UDP)
-    #--------------------------------------------------------------------------
-    return unless $self->_socks5_connect_command(
-                    ${*$self}->{SOCKS}->{Bind} ?
+    ${*$self}->{SOCKS}->{queue} = [
+        [\&_socks5_connect, [$self], '', [], 0],
+        [\&_socks5_connect_if_auth, [$self], '', [], 0],
+        [\&_socks5_connect_command, [
+                $self,
+                ${*$self}->{SOCKS}->{Bind} ?
                             CMD_BIND :
                             ${*$self}->{SOCKS}->{TCP} ?
                                 CMD_UDPASSOC :
                                 CMD_CONNECT
-                  ) &&
-                  $self->_socks5_connect_reply();
-
+            ],
+         '', [], 0
+        ],
+        [\&_socks5_connect_reply, [$self], '', [], 0]
+    ];
+    
+    defined( $self->_run_queue() )
+        or return;
+    
     return $self;
+}
+
+sub _run_queue
+{
+    my $self = shift;
+    
+    my $retval;
+    my $passed = 0;
+    
+    foreach my $elt (@{${*$self}->{SOCKS}->{queue}})
+    {
+        $passed++;
+        $retval = $elt->[0]->(@{$elt->[1]});
+        unless (defined $retval)
+        {
+            ${*$self}->{SOCKS}->{queue} = [];
+            ${*$self}->{SOCKS}->{queue_results} = [];
+            last;
+        }
+        
+        last if ($retval == -1);
+        ${*$self}->{SOCKS}->{queue_results}{$elt->[0]} = $retval;
+    }
+    
+    splice(@{${*$self}->{SOCKS}->{queue}}, 0, $passed) if (defined $retval);
+    return $retval;
 }
 
 ###############################################################################
@@ -476,6 +509,20 @@ sub _socks5_connect
     }
 
     return $auth_method;
+}
+
+sub _socks5_connect_if_auth
+{
+    my $self = shift;
+    if(${*$self}->{SOCKS}->{queue_results}{\&_socks5_connect} != AUTHMECH_ANON)
+    {
+        unshift @{${*$self}->{SOCKS}->{queue}}, [\&_socks5_connect_auth, [$self], '', [], 0];
+        (${*$self}->{SOCKS}->{queue}[0], ${*$self}->{SOCKS}->{queue}[1])
+                                        =
+        (${*$self}->{SOCKS}->{queue}[1], ${*$self}->{SOCKS}->{queue}[0]);
+    }
+    
+    1;
 }
 
 ###############################################################################
