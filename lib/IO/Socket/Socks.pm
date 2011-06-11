@@ -1870,7 +1870,7 @@ sub show
     $self->_row(1, $tag);
     $self->_separator($tag);
     
-    print "\n";
+    print STDERR "\n";
     
     @{$self} = ();
 }
@@ -1881,7 +1881,7 @@ sub _separator
     my $tag  = shift;
     my ($row1_len, $row2_len, $len);
     
-    print $tag, '+';
+    print STDERR $tag, '+';
     
     for(my $i=0; $i<@$self; $i+=2)
     {
@@ -1889,10 +1889,10 @@ sub _separator
         $row2_len = length($self->[$i+1]);
         $len = ($row1_len > $row2_len ? $row1_len : $row2_len)+2;
         
-        print '-' x $len, '+';
+        print STDERR '-' x $len, '+';
     }
     
-    print "\n";
+    print STDERR "\n";
 }
 
 sub _row
@@ -1902,7 +1902,7 @@ sub _row
     my $tag  = shift;
     my ($row1_len, $row2_len, $len);
     
-    print $tag, '|';
+    print STDERR $tag, '|';
     
     for(my $i=0; $i<@$self; $i+=2)
     {
@@ -1910,10 +1910,10 @@ sub _row
         $row2_len = length($self->[$i+1]);
         $len = ($row1_len > $row2_len ? $row1_len : $row2_len);
         
-        printf(' %-'.$len.'s |', $self->[$i+$row]);
+        printf STDERR ' %-'.$len.'s |', $self->[$i+$row];
     }
     
-    print "\n";
+    print STDERR "\n";
 }
 
 1;
