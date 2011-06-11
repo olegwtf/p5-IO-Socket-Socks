@@ -776,6 +776,7 @@ sub _socks4_connect_command
     my $self = shift;
     my $command = shift;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
+    my ($reads, $sends, $debugs) = (0, 0, 0);
     my $resolve = defined(${*$self}->{SOCKS}->{Resolve}) ? ${*$self}->{SOCKS}->{Resolve} : $SOCKS4_RESOLVE;
     
     #--------------------------------------------------------------------------
@@ -796,10 +797,11 @@ sub _socks4_connect_command
         $dsthost = ${*$self}->{SOCKS}->{CmdAddr} . pack('C', 0);
     }
     
-    $self->_socks_send(pack('CC', SOCKS4_VER, $command) . $dstport . $dstaddr . $userid . pack('C', 0) . $dsthost)
-        or return _fail();
+    my $reply;
+    $reply = $self->_socks_send(pack('CC', SOCKS4_VER, $command) . $dstport . $dstaddr . $userid . pack('C', 0) . $dsthost, ++$sends)
+        or return _fail($reply);
         
-    if($debug)
+    if($debug && !$self->_already_showed(++$debugs))
     {
         $debug->add(
             ver => SOCKS4_VER,
@@ -826,6 +828,7 @@ sub _socks4_connect_reply
 {
     my $self = shift;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
+    my ($reads, $sends, $debugs) = (0, 0, 0);
     
     #--------------------------------------------------------------------------
     # Read the reply
@@ -836,8 +839,9 @@ sub _socks4_connect_reply
     # |  1  |  1  |    2     |       4       |
     # +-----+-----+----------+---------------+
     
-    my $reply = $self->_socks_read(8)
-        or return _fail();
+    my $reply;
+    $reply = $self->_socks_read(8, ++$reads)
+        or return _fail($reply);
     
     my ($ver, $rep, $bndport) = unpack('CCn', $reply);
     substr($reply, 0, 4) = '';
@@ -846,7 +850,7 @@ sub _socks4_connect_reply
     ${*$self}->{SOCKS}->{DstAddr} = $bndaddr;
     ${*$self}->{SOCKS}->{DstPort} = $bndport;
     
-    if($debug)
+    if($debug && !$self->_already_showed(++$debugs))
     {
         $debug->add(
             ver => $ver,
