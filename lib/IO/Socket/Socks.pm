@@ -24,7 +24,7 @@ package IO::Socket::Socks;
 use strict;
 use IO::Socket;
 use IO::Select;
-use Errno qw(EWOULDBLOCK);
+use Errno qw(EWOULDBLOCK EAGAIN);
 use Carp;
 use vars qw( @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION $SOCKS_ERROR $SOCKS5_RESOLVE $SOCKS4_RESOLVE $SOCKS_DEBUG %CODES );
 require Exporter;
@@ -135,6 +135,16 @@ $CODES{REPLY}->{&REQUEST_GRANTED} = "request granted";
 $CODES{REPLY}->{&REQUEST_FAILED} = "request rejected or failed";
 $CODES{REPLY}->{&REQUEST_REJECTED_IDENTD} = "request rejected becasue SOCKS server cannot connect to identd on the client";
 $CODES{REPLY}->{&REQUEST_REJECTED_USERID} = "request rejected because the client program and identd report different user-ids";
+
+# queue
+use constant
+{
+    Q_SUB   => 0,
+    Q_ARGS  => 1,
+    Q_BUF   => 2,
+    Q_READS => 3,
+    Q_SENDS => 4,
+};
 
 #------------------------------------------------------------------------------
 # sub new is handled by IO::Socket::INET
@@ -375,8 +385,8 @@ sub _connect
     {
         ${*$self}->{SOCKS}->{queue} = [
             # [sub, [@args], buf, [@reads], sends_cnt]
-            [\&_socks4_connect_command, [$self, ${*$self}->{SOCKS}->{Bind} ? CMD_BIND : CMD_CONNECT], '', [], 0],
-            [\&_socks4_connect_reply, [$self], '', [], 0]
+            [\&_socks4_connect_command, [$self, ${*$self}->{SOCKS}->{Bind} ? CMD_BIND : CMD_CONNECT], undef, [], 0],
+            [\&_socks4_connect_reply, [$self], undef, [], 0]
         ];
     }
     
@@ -385,8 +395,8 @@ sub _connect
     # Handle any authentication
     #--------------------------------------------------------------------------
     ${*$self}->{SOCKS}->{queue} = [
-        [\&_socks5_connect, [$self], '', [], 0],
-        [\&_socks5_connect_if_auth, [$self], '', [], 0],
+        [\&_socks5_connect, [$self], undef, [], 0],
+        [\&_socks5_connect_if_auth, [$self], undef, [], 0],
         [\&_socks5_connect_command, [
                 $self,
                 ${*$self}->{SOCKS}->{Bind} ?
@@ -395,9 +405,9 @@ sub _connect
                                 CMD_UDPASSOC :
                                 CMD_CONNECT
             ],
-         '', [], 0
+         undef, [], 0
         ],
-        [\&_socks5_connect_reply, [$self], '', [], 0]
+        [\&_socks5_connect_reply, [$self], undef, [], 0]
     ];
     
     defined( $self->_run_queue() )
@@ -416,7 +426,7 @@ sub _run_queue
     foreach my $elt (@{${*$self}->{SOCKS}->{queue}})
     {
         $passed++;
-        $retval = $elt->[0]->(@{$elt->[1]});
+        $retval = $elt->[Q_SUB]->(@{$elt->[Q_ARGS]});
         unless (defined $retval)
         {
             ${*$self}->{SOCKS}->{queue} = [];
@@ -425,7 +435,7 @@ sub _run_queue
         }
         
         last if ($retval == -1);
-        ${*$self}->{SOCKS}->{queue_results}{$elt->[0]} = $retval;
+        ${*$self}->{SOCKS}->{queue_results}{$elt->[Q_SUB]} = $retval;
     }
     
     splice(@{${*$self}->{SOCKS}->{queue}}, 0, $passed) if (defined $retval);
@@ -516,7 +526,7 @@ sub _socks5_connect_if_auth
     my $self = shift;
     if(${*$self}->{SOCKS}->{queue_results}{\&_socks5_connect} != AUTHMECH_ANON)
     {
-        unshift @{${*$self}->{SOCKS}->{queue}}, [\&_socks5_connect_auth, [$self], '', [], 0];
+        unshift @{${*$self}->{SOCKS}->{queue}}, [\&_socks5_connect_auth, [$self], undef, [], 0];
         (${*$self}->{SOCKS}->{queue}[0], ${*$self}->{SOCKS}->{queue}[1])
                                         =
         (${*$self}->{SOCKS}->{queue}[1], ${*$self}->{SOCKS}->{queue}[0]);
@@ -1656,38 +1666,88 @@ sub _socks_send
 sub _socks_read
 {
     my $self = shift;
-    my $length = shift || 1;
+    my $length = shift;
+    my $numb = shift;
     
+    my $data = '';
+    my ($buf, $rc);
+    my $blocking = $self->blocking;
+    
+    # non-blocking read
+    unless ($blocking || ${*$self}{io_socket_timeout})
+    { # no timeout should be specified for non-blocking connect
+        if(defined ${*$self}->{SOCKS}->{queue}[0][Q_READS][$numb])
+        { # already readed
+            return ${*$self}->{SOCKS}->{queue}[0][Q_READS][$numb];
+        }
+        
+        if(defined ${*$self}->{SOCKS}->{queue}[0][Q_BUF])
+        { # some chunk already readed
+            $data = ${*$self}->{SOCKS}->{queue}[0][Q_BUF];
+            $length -= length $data;
+        }
+        
+        while($length > 0)
+        {
+            $rc = $self->sysread($buf, $length);
+            if(defined $rc)
+            {
+                if($rc > 0)
+                {
+                    $length -= $rc;
+                    $data .= $buf;
+                    if($length == 0)
+                    {
+                        last;
+                    }
+                }
+                else
+                {
+                    last
+                }
+            }
+            elsif($! == EWOULDBLOCK || $! == EAGAIN)
+            { # no data to read
+                if (length $data)
+                { # save already readed data in the queue buffer
+                    ${*$self}->{SOCKS}->{queue}[0][Q_BUF] = $data;
+                }
+                return undef;
+            }
+            else
+            {
+                last;
+            }
+        }
+        
+        ${*$self}->{SOCKS}->{queue}[0][Q_BUF] = undef;
+        ${*$self}->{SOCKS}->{queue}[0][Q_READS][$numb] = $data;
+        return $data;
+    }
+    
+    # blocking read
     my $selector = IO::Select->new($self);
     my $start = time();
-    my ($buf, $data, $rc);
-
+    
     while($length > 0 && (!${*$self}{io_socket_timeout} || time() - $start < ${*$self}{io_socket_timeout}))
     {
         unless($selector->can_read(1))
         { # no data in socket for now, check if timeout expired and try again
             next;
         }
-
+        
         $rc = $self->sysread($buf, $length);
-        if(defined($rc))
-        { # no errors
-            if($rc > 0)
-            { # reduce limit and modify buffer
-                $length -= $rc;
-                $data .= $buf;
-                if($length == 0)
-                { # all data successfully readed
-                    last;
-                }
-            }
-            else
-            { # EOF in the socket
+        if($rc > 0)
+        { # reduce limit and modify buffer
+            $length -= $rc;
+            $data .= $buf;
+            if($length == 0)
+            { # all data successfully readed
                 last;
             }
         }
-        elsif($! != EWOULDBLOCK) 
-        { # unknown error in the socket
+        else
+        { # EOF or error in the socket
             last;
         }
     }
@@ -1698,7 +1758,7 @@ sub _socks_read
 sub _timeout
 {
     $SOCKS_ERROR = 'Timeout';
-    undef;
+    return;
 }
 
 
