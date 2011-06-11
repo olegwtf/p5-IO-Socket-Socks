@@ -1628,13 +1628,58 @@ sub _socks_send
 {
     my $self = shift;
     my $data = shift;
+    my $numb = shift;
     
+    my $rc;
+    my $writed = 0;
     my $blocking = $self->blocking(0) if ${*$self}{io_socket_timeout};
+    
+    unless ($blocking || ${*$self}{io_socket_timeout})
+    {
+        if(${*$self}->{SOCKS}->{queue}[0][Q_SENDS] >= $numb)
+        { # already sent
+            return 1;
+        }
+        
+        if(defined ${*$self}->{SOCKS}->{queue}[0][Q_BUF])
+        { # some chunk already sent
+            substr($data, 0, ${*$self}->{SOCKS}->{queue}[0][Q_BUF]) = '';
+        }
+        
+        while (length $data)
+        {
+            $rc = $self->sywrite($data);
+            if (defined $rc)
+            {
+                if($rc > 0)
+                {
+                    ${*$self}->{SOCKS}->{queue}[0][Q_BUF] += $rc;
+                    substr($data, 0, $rc) = '';
+                }
+                else
+                {
+                    last;
+                }
+            }
+            elsif($! == EWOULDBLOCK || $! == EAGAIN)
+            {
+                return undef;
+            }
+            else
+            {
+                last;
+            }
+        }
+        
+        $writed = ${*$self}->{SOCKS}->{queue}[0][Q_BUF];
+        ${*$self}->{SOCKS}->{queue}[0][Q_BUF] = undef;
+        ${*$self}->{SOCKS}->{queue}[0][Q_SENDS]++;
+        return $writed;
+    }
     
     my $selector = IO::Select->new($self);
     my $start = time();
-    my $writed = 0;
-    my $rc;
+    
     while(!${*$self}{io_socket_timeout} || time() - $start < ${*$self}{io_socket_timeout})
     {
         unless($selector->can_write(1))
@@ -1652,7 +1697,7 @@ sub _socks_send
                 last;
             }
         }
-        elsif($! != EWOULDBLOCK)
+        else
         { # some error in the socket; will return false
             last;
         }
@@ -1696,10 +1741,6 @@ sub _socks_read
                 {
                     $length -= $rc;
                     $data .= $buf;
-                    if($length == 0)
-                    {
-                        last;
-                    }
                 }
                 else
                 {
@@ -1741,10 +1782,6 @@ sub _socks_read
         { # reduce limit and modify buffer
             $length -= $rc;
             $data .= $buf;
-            if($length == 0)
-            { # all data successfully readed
-                last;
-            }
         }
         else
         { # EOF or error in the socket
