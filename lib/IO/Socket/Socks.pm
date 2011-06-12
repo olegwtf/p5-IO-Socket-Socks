@@ -426,7 +426,7 @@ sub _run_queue
         unless (defined $retval)
         {
             ${*$self}->{SOCKS}->{queue} = [];
-            ${*$self}->{SOCKS}->{queue_results} = [];
+            ${*$self}->{SOCKS}->{queue_results} = {};
             last;
         }
         
@@ -439,6 +439,7 @@ sub _run_queue
     {
         unless(@{${*$self}->{SOCKS}->{queue}})
         {
+            ${*$self}->{SOCKS}->{queue_results} = {};
             ${*$self}->{SOCKS}->{ready} = 1;
         }
     }
