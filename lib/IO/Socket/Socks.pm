@@ -484,7 +484,7 @@ sub _socks5_connect
     $reply = $sock->_socks_send(pack('CCa*', SOCKS5_VER, $nmethods, $methods), ++$sends)
         or return _fail($reply);
     
-    if($debug && !$self->_already_showed(++$debugs))
+    if($debug && !$self->_debugged(++$debugs))
     {
         $debug->add(
             ver => SOCKS5_VER,
@@ -508,7 +508,7 @@ sub _socks5_connect
     
     my ($version, $auth_method) = unpack('CC', $reply);
 
-    if($debug && !$self->_already_showed(++$debugs))
+    if($debug && !$self->_debugged(++$debugs))
     {
         $debug->add(
             ver => $version,
@@ -572,7 +572,7 @@ sub _socks5_connect_auth
     $reply = $sock->_socks_send(pack("CCa${ulen}Ca*", 1, $ulen, $uname, $plen, $passwd), ++$sends)
         or return _fail($reply);
     
-    if($debug && !$self->_already_showed(++$debugs))
+    if($debug && !$self->_debugged(++$debugs))
     {
         $debug->add(
             ver => 1,
@@ -598,7 +598,7 @@ sub _socks5_connect_auth
 
     my ($ver, $status) = unpack('CC', $reply);
 
-    if($debug && !$self->_already_showed(++$debugs))
+    if($debug && !$self->_debugged(++$debugs))
     {
         $debug->add(
             ver => $ver,
@@ -651,7 +651,7 @@ sub _socks5_connect_command
     $reply = $sock->_socks_send(pack('C4', SOCKS5_VER, $command, 0, $atyp) . (defined($hlen) ? pack('C', $hlen) : '') . $dstaddr . $dstport, ++$sends)
         or return _fail($reply);
 
-    if($debug && !$self->_already_showed(++$debugs))
+    if($debug && !$self->_debugged(++$debugs))
     {
         $debug->add(
             ver => SOCKS5_VER,
@@ -748,7 +748,7 @@ sub _socks5_connect_reply
     ${*$self}->{SOCKS}->{DstAddr} = $bndaddr;
     ${*$self}->{SOCKS}->{DstPort} = $bndport;
     
-    if($debug && !$self->_already_showed(++$debugs))
+    if($debug && !$self->_debugged(++$debugs))
     {
         $debug->add(bndport => $bndport);
         $debug->show('Recv: ');
@@ -801,7 +801,7 @@ sub _socks4_connect_command
     $reply = $self->_socks_send(pack('CC', SOCKS4_VER, $command) . $dstport . $dstaddr . $userid . pack('C', 0) . $dsthost, ++$sends)
         or return _fail($reply);
         
-    if($debug && !$self->_already_showed(++$debugs))
+    if($debug && !$self->_debugged(++$debugs))
     {
         $debug->add(
             ver => SOCKS4_VER,
@@ -850,7 +850,7 @@ sub _socks4_connect_reply
     ${*$self}->{SOCKS}->{DstAddr} = $bndaddr;
     ${*$self}->{SOCKS}->{DstPort} = $bndport;
     
-    if($debug && !$self->_already_showed(++$debugs))
+    if($debug && !$self->_debugged(++$debugs))
     {
         $debug->add(
             ver => $ver,
@@ -924,8 +924,20 @@ sub accept
     }
     else
     {
-        my $status = ${*$self}->{SOCKS}->{Version} == 4 ? $self->_socks4_connect_reply() : $self->_socks5_connect_reply();
-        return $status ? $self : undef;
+        ${*$self}->{SOCKS}->{ready} = 0;
+        if({*$self}->{SOCKS}->{Version} == 4)
+        {
+            push @{${*$self}->{SOCKS}->{queue}}, [\&_socks4_connect_reply, [$self], undef, [], 0];
+        }
+        else
+        {
+            push @{${*$self}->{SOCKS}->{queue}}, [\&_socks5_connect_reply, [$self], undef, [], 0];
+        }
+        
+        defined( $self->_run_queue() )
+            or return;
+        
+        return $self;
     }
 }
 
@@ -1815,7 +1827,7 @@ sub _socks_read
     return $data;
 }
 
-sub _already_showed
+sub _debugged
 {
     my ($self, $debugs) = @_;
     
@@ -1828,11 +1840,9 @@ sub _already_showed
     return 0;
 }
 
-sub _fail($)
+sub _fail
 {
-    my $rc = shift;
-    
-    if(defined $rc)
+    if(!@_ || defined($_[0]))
     {
         $SOCKS_ERROR = 'Timeout' unless defined $SOCKS_ERROR;
         return;
