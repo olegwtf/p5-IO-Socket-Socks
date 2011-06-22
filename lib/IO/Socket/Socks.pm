@@ -363,6 +363,11 @@ sub connect
     $self->_connect();
 }
 
+###############################################################################
+#
+# ready - check is non-blocking socket ready to transfer user data
+#
+###############################################################################
 sub ready
 {
     my $self = shift;
@@ -414,6 +419,12 @@ sub _connect
     return $self;
 }
 
+###############################################################################
+#
+# _run_queue - run tasks from queue, return undef on error, -1 if one of the task
+# returned not completed because of the possible blocking on network operation
+#
+###############################################################################
 sub _run_queue
 {
     my $self = shift;
@@ -443,6 +454,7 @@ sub _run_queue
             ${*$self}->{SOCKS}->{ready} = 1;
         }
     }
+    
     return $retval;
 }
 
@@ -1414,7 +1426,7 @@ sub _socks4_accept_command_reply
     # +-----+-----+----------+---------------+
     
     my $bndaddr = inet_aton($host);
-    $self->_socks_send(pack('CCn', 0, $reply, $port) . $bndaddr)
+    $self->_socks_send(pack('CCna*', 0, $reply, $port, $bndaddr))
         or return _fail();
     
     if($debug)
@@ -1661,7 +1673,7 @@ sub _socks_send
     $SOCKS_ERROR = undef;
     my $rc;
     my $writed = 0;
-    my $blocking = $self->blocking(0) if ${*$self}{io_socket_timeout};
+    my $blocking = ${*$self}{io_socket_timeout} ? $self->blocking(0) : $self->blocking;
     
     unless ($blocking || ${*$self}{io_socket_timeout})
     {
@@ -1743,7 +1755,7 @@ sub _socks_send
 sub _socks_read
 {
     my $self = shift;
-    my $length = shift;
+    my $length = shift || 1;
     my $numb = shift;
     
     $SOCKS_ERROR = undef;
