@@ -64,6 +64,8 @@ use constant
     REQUEST_FAILED
     REQUEST_REJECTED_IDENTD
     REQUEST_REJECTED_USERID
+    SOCKS_WANT_READ
+    SOCKS_WANT_WRITE
 );
 %EXPORT_TAGS = (constants => \@EXPORT_OK);
 
@@ -2042,9 +2044,13 @@ Creates a new IO::Socket::Socks client object.  new_from_socket() is the same as
 new(), but allows to create object from an existing socket. Both takes the following
 config hash:
 
-  SocksVersion => 4 for socks v4, 5 for socks v5. Default is 5
+  SocksVersion => 4 or 5. Default is 5
   
-  Timeout => read/write/connect/accept timeout for the socket
+  Timeout => connect/accept timeout
+  
+  Blocking => Since IO::Socket::Socks v0.5 you can perform non-blocking connect/bind by 
+              passing false value for this option. Default is true - blocking. See ready()
+              below for more details.
   
   SocksResolve => resolve host name to ip by proxy server or 
                   not (will resolve by client). This
@@ -2066,15 +2072,15 @@ config hash:
   
   BindAddr => Hostname of the remote machine which will
               connect to the proxy server after bind request
-              
+  
+  BindPort => Port of the remote machine which will
+              connect to the proxy server after bind request
+  
   UdpAddr => Associate UDP socket on the server with this client
              hostname
   
   UdpPort => Associate UDP socket on the server with this client
              port
-  
-  BindPort => Port of the remote machine which will
-              connect to the proxy server after bind request
   
   AuthType => What kind of authentication to support:
               none       - no authentication (default)
@@ -2097,6 +2103,40 @@ The following options should be specified:
   ConnectAddr and ConnectPort or BindAddr and BindPort or UdpAddr and UdpPort
 
 Other options are facultative.
+
+=head3
+ready( )
+
+Returns true when socket becomes ready to transfer data (socks handshake done),
+false otherwise. This is useful for non-blocking connect/bind. When this method
+returns false value you can determine what socks handshake need for with $SOCKS_ERROR
+variable. It may need for read, then $SOCKS_ERROR will be SOCKS_WANT_READ or need for
+write, then it will be SOCKS_WANT_WRITE.
+
+Example:
+
+    use IO::Socket::Socks;
+    use IO::Select;
+    
+    my $sock = IO::Socket::Socks->new(
+        ProxyAddr => 'localhost', ProxyPort => 1080, ConnectAddr => 'mail.com', ConnectPort => 80, Blocking => 0
+    ) or die $SOCKS_ERROR;
+    
+    my $sel = IO::Select->new($sock);
+    until ($sock->ready) {
+        if ($SOCKS_ERROR == SOCKS_WANT_READ) {
+            $sel->can_read();
+        }
+        elsif ($SOCKS_ERROR == SOCKS_WANT_WRITE) {
+            $sel->can_write();
+        }
+        else {
+            die $SOCKS_ERROR;
+        }
+    }
+    
+    # you may want to return socket to blocking state by $sock->blocking(1)
+    $sock->syswrite("I am ready");
 
 =head3
 accept( )
@@ -2289,6 +2329,10 @@ The following constants could be imported manually or using `:constants' tag:
   REQUEST_FAILED
   REQUEST_REJECTED_IDENTD
   REQUEST_REJECTED_USERID
+  SOCKS_WANT_READ
+  SOCKS_WANT_WRITE
+
+SOCKS_WANT_READ and SOCKS_WANT_WRITE are imported by default.
 
 =head1 BUGS
 
