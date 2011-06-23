@@ -64,10 +64,8 @@ use constant
     REQUEST_FAILED
     REQUEST_REJECTED_IDENTD
     REQUEST_REJECTED_USERID
-    SOCKS_WANT_READ
-    SOCKS_WANT_WRITE
 );
-%EXPORT_TAGS = (constants => \@EXPORT_OK);
+%EXPORT_TAGS = (constants => ['SOCKS_WANT_READ', 'SOCKS_WANT_WRITE', @EXPORT_OK]);
 
 $VERSION = '0.5';
 $SOCKS5_RESOLVE = 1;
@@ -367,19 +365,6 @@ sub connect
 
 ###############################################################################
 #
-# ready - check is non-blocking socket ready to transfer user data
-#
-###############################################################################
-sub ready
-{
-    my $self = shift;
-    
-    $self->_run_queue();
-    return ${*$self}->{SOCKS}->{ready};
-}
-
-###############################################################################
-#
 # _connect - reusable connect operations
 #
 ###############################################################################
@@ -448,16 +433,26 @@ sub _run_queue
         shift @{${*$self}->{SOCKS}->{queue}};
     }
     
-    if(defined($retval))
+    if(defined($retval) && !@{${*$self}->{SOCKS}->{queue}})
     {
-        unless(@{${*$self}->{SOCKS}->{queue}})
-        {
-            ${*$self}->{SOCKS}->{queue_results} = {};
-            ${*$self}->{SOCKS}->{ready} = 1;
-        }
+        ${*$self}->{SOCKS}->{queue_results} = {};
+        ${*$self}->{SOCKS}->{ready} = 1;
     }
     
     return $retval;
+}
+
+###############################################################################
+#
+# ready - check is non-blocking socket ready to transfer user data
+#
+###############################################################################
+sub ready
+{
+    my $self = shift;
+    
+    $self->_run_queue();
+    return ${*$self}->{SOCKS}->{ready};
 }
 
 ###############################################################################
@@ -1689,10 +1684,10 @@ sub _socks_send
             substr($data, 0, ${*$self}->{SOCKS}->{queue}[0][Q_BUF]) = '';
         }
         
-        while (length $data)
+        while(length $data)
         {
             $rc = $self->syswrite($data);
-            if (defined $rc)
+            if(defined $rc)
             {
                 if($rc > 0)
                 {
@@ -2048,7 +2043,7 @@ config hash:
   
   Timeout => connect/accept timeout
   
-  Blocking => Since IO::Socket::Socks v0.5 you can perform non-blocking connect/bind by 
+  Blocking => Since IO::Socket::Socks version 0.5 you can perform non-blocking connect/bind by 
               passing false value for this option. Default is true - blocking. See ready()
               below for more details.
   
