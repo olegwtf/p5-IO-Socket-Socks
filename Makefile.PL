@@ -6,7 +6,7 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     'NAME'      => 'IO::Socket::Socks',
     'LICENSE'   => 'lgpl',
-    'PREREQ_PM' => { 'IO::Socket::INET'  => 0, 'IO::Select' => 0, Test::More => 0.88 },
+    'PREREQ_PM' => { 'IO::Socket::INET'  => 0, 'IO::Select' => 0, 'Test::More' => 0.88 },
     'META_MERGE' => { resources => {repository => 'https://github.com/olegwtf/p5-IO-Socket-Socks'} },
     'VERSION_FROM'  => 'lib/IO/Socket/Socks.pm',
     'dist' => {
