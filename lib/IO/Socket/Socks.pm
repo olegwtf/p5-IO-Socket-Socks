@@ -69,7 +69,7 @@ use constant
 );
 %EXPORT_TAGS = (constants => \@EXPORT_OK);
 
-$VERSION = "0.4";
+$VERSION = '0.5';
 $SOCKS5_RESOLVE = 1;
 $SOCKS4_RESOLVE = 0;
 $SOCKS_DEBUG = $ENV{SOCKS_DEBUG};

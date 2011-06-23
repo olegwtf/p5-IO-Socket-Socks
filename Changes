@@ -1,3 +1,9 @@
+0.5
+===
+  - Added support for non-blocking connect/bind operations on the client side
+  - $SOCKS_DEBUG variable added, debug now to STDERR instead STDOUT
+  - Real tests added
+
 0.4
 ===
   - UDP associate support added. It closes Bug #39216

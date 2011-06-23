@@ -4,3 +4,4 @@ blib
 tests
 .swp$
 CVS
+.git

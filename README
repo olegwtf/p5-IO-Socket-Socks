@@ -1,4 +1,4 @@
-IO::Socket::Socks v0.4
+IO::Socket::Socks v0.5
 
 This module seeks to provide a full implementation of the SOCKS protocol
 while behaving like a regular socket as much as possible.
