@@ -3,7 +3,7 @@ use IO::Socket;
 use IO::Select;
 use strict;
 
-sub make_socks_server() {
+sub make_socks_server {
 	my ($version, $login, $password, %delay) = @_;
 	
 	my $serv = IO::Socket::Socks->new(Listen => 3, SocksVersion => $version, RequireAuth => ($login && $password), UserAuth => sub {
