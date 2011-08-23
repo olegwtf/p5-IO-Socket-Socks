@@ -372,6 +372,7 @@ sub _connect
 {
     my $self = shift;
     ${*$self}->{SOCKS}->{ready} = 0;
+    ${*$self}->{SOCKS}->{connected} = 0;
 
     if(${*$self}->{SOCKS}->{Version} == 4)
     {
@@ -1689,6 +1690,8 @@ sub _socks_send
             $rc = $self->syswrite($data);
             if(defined $rc)
             {
+                ${*$self}->{SOCKS}->{connected} = 1 unless ${*$self}->{SOCKS}->{connected};
+                
                 if($rc > 0)
                 {
                     ${*$self}->{SOCKS}->{queue}[0][Q_BUF] += $rc;
@@ -1699,9 +1702,8 @@ sub _socks_send
                     last;
                 }
             }
-            elsif($! == EWOULDBLOCK || $! == EAGAIN ||             # socket was not already connected
-                  ($! == ENOTCONN && !(${*$self}->{SOCKS}->{queue}[0][Q_SENDS] || defined(${*$self}->{SOCKS}->{queue}[0][Q_BUF])))
-                 )
+            elsif($! == EWOULDBLOCK || $! == EAGAIN || 
+                 ($! == ENOTCONN && !${*$self}->{SOCKS}->{connected}))
             {
                 $SOCKS_ERROR = SOCKS_WANT_WRITE;
                 return undef;
