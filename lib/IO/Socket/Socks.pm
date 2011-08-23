@@ -24,7 +24,7 @@ package IO::Socket::Socks;
 use strict;
 use IO::Socket;
 use IO::Select;
-use Errno qw(EWOULDBLOCK EAGAIN);
+use Errno qw(EWOULDBLOCK EAGAIN ENOTCONN);
 use Carp;
 use vars qw( @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION $SOCKS_ERROR $SOCKS5_RESOLVE $SOCKS4_RESOLVE $SOCKS_DEBUG %CODES );
 require Exporter;
@@ -1699,7 +1699,9 @@ sub _socks_send
                     last;
                 }
             }
-            elsif($! == EWOULDBLOCK || $! == EAGAIN)
+            elsif($! == EWOULDBLOCK || $! == EAGAIN ||             # socket was not already connected
+                  ($! == ENOTCONN && !(${*$self}->{SOCKS}->{queue}[0][Q_SENDS] || defined(${*$self}->{SOCKS}->{queue}[0][Q_BUF])))
+                 )
             {
                 $SOCKS_ERROR = SOCKS_WANT_WRITE;
                 return undef;
