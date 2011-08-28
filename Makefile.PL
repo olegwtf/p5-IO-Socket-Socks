@@ -9,6 +9,9 @@ WriteMakefile(
     'PREREQ_PM' => { 'IO::Socket::INET'  => 0, 'IO::Select' => 0, 'Test::More' => 0.88 },
     'META_MERGE' => { resources => {repository => 'https://github.com/olegwtf/p5-IO-Socket-Socks'} },
     'VERSION_FROM'  => 'lib/IO/Socket/Socks.pm',
+    ($] >= 5.005 ?     ## Add these new keywords supported since 5.005
+      (ABSTRACT_FROM  => 'lib/IO/Socket/Socks.pm', # retrieve abstract from module
+       AUTHOR         => 'Oleg G <oleg@cpan.org>') : ()),
     'dist' => {
         'COMPRESS' => 'gzip --best'
     }

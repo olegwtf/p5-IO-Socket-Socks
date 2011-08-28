@@ -1,3 +1,8 @@
+0.51
+====
+  - Non-blocking connect on BSD systems could break connection with ENOTCONN error
+  - Spelling patch from the debian project was applied
+
 0.5
 ===
   - Added support for non-blocking connect/bind operations on the client side
