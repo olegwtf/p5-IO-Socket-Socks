@@ -2040,7 +2040,7 @@ subdirectory in the distribution.
 =head3 new_from_socket($socket, %cfg)
 
 Creates a new IO::Socket::Socks client object.  new_from_socket() is the same as
-new(), but allows to create object from an existing socket. Both takes the following
+new(), but allows one to create object from an existing socket. Both takes the following
 config hash:
 
   SocksVersion => 4 or 5. Default is 5
@@ -2150,7 +2150,7 @@ client socket.
 =head3
 command( %cfg )
 
-Allows to execute socks command on already opened socket. Thus you
+Allows one to execute socks command on already opened socket. Thus you
 can create socks chain. For example see L</EXAMPLES> section.
 
 %cfg is like hash in the constructor. Only options listed below makes sence:
@@ -2186,7 +2186,7 @@ after bind/udpassoc.
 =head3 new_from_socket($socket, %cfg)
 
 Creates a new IO::Socket::Socks server object. new_from_socket() is the same as
-new(), but allows to create object from an existing socket. Both takes the following
+new(), but allows one to create object from an existing socket. Both takes the following
 config hash:
 
   SocksVersion => 4 for socks v4, 5 for socks v5. Default is 5
