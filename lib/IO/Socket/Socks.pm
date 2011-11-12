@@ -721,7 +721,7 @@ sub _socks5_connect_reply
     
     if ($atyp == ADDR_DOMAINNAME)
     {
-        $reply = $sock->_socks_read(1, ++$reads)
+        length( $reply = $sock->_socks_read(1, ++$reads) )
             or return _fail($reply);
         
         my $hlen = unpack('C', $reply);
@@ -907,7 +907,12 @@ sub accept
 
         if (!$client)
         {
-            $SOCKS_ERROR = "Proxy accept new client failed.";
+            if ($! == EAGAIN || $! == EWOULDBLOCK) {
+                $SOCKS_ERROR = SOCKS_WANT_READ;
+            }
+            else {
+                $SOCKS_ERROR = "Proxy accept new client failed.";
+            }
             return;
         }
         
@@ -917,21 +922,23 @@ sub accept
         
         if(${*$self}->{SOCKS}->{Version} == 4)
         {
-            return unless $self->_socks4_accept_command($client);
+            ${*$self}->{SOCKS}->{queue} = [
+                [\&_socks4_accept_command, [$self, $client], undef, [], 0]
+            ];
+            
         }
         else
         {
-            my $authmech = $self->_socks5_accept($client);
-            return unless defined($authmech);
-
-            if ($authmech == AUTHMECH_USERPASS)
-            {
-                return unless $self->_socks5_accept_auth($client);
-            }
-
-            return unless $self->_socks5_accept_command($client);
+            ${*$self}->{SOCKS}->{queue} = [
+                [\&_socks5_accept, [$self, $client], undef, [], 0],
+                [\&_socks5_accept_if_auth, [$self, $client], undef, [], 0],
+                [\&_socks5_accept_command, [$self, $client], undef, [], 0]
+            ];
         }
 
+        defined( $self->_run_queue() )
+            or return;
+        
         return $client;
     }
     else
@@ -964,6 +971,7 @@ sub _socks5_accept
     my $self = shift;
     my $client = shift;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
+    my ($reads, $sends, $debugs) = (0, 0, 0);
 
     #--------------------------------------------------------------------------
     # Read the auth mechanisms
@@ -974,16 +982,17 @@ sub _socks5_accept
     # | 1  |    1     | 1 to 255 |
     # +----+----------+----------+
     
-    my $request = $client->_socks_read(2)
-        or return _fail();
+    my $request;
+    $request = $client->_socks_read(2, ++$reads)
+        or return _fail($request);
     
     my ($ver, $nmethods) = unpack('CC', $request);
-    $request = $client->_socks_read($nmethods)
-        or return _fail();
+    $request = $client->_socks_read($nmethods, ++$reads)
+        or return _fail($request);
     
     my @methods = unpack('C'x$nmethods, $request);
     
-    if($debug)
+    if($debug && !$self->_debugged(++$debugs))
     {
         $debug->add(
             ver => $ver,
@@ -1001,7 +1010,7 @@ sub _socks5_accept
     
     if ($nmethods == 0)
     {
-        $SOCKS_ERROR = "No auth methods sent.";
+        $SOCKS_ERROR = "No auth methods sent";
         return;
     }
 
@@ -1030,10 +1039,10 @@ sub _socks5_accept
     # | 1  |   1    |
     # +----+--------+
     
-    $client->_socks_send(pack('CC', SOCKS5_VER, $authmech))
-        or return _fail();
+    $request = $client->_socks_send(pack('CC', SOCKS5_VER, $authmech), ++$sends)
+        or return _fail($request);
     
-    if($debug)
+    if($debug && !$self->_debugged(++$debugs))
     {
         $debug->add(
             ver => SOCKS5_VER,
@@ -1051,6 +1060,21 @@ sub _socks5_accept
     return $authmech;
 }
 
+sub _socks5_accept_if_auth
+{
+    my $self = shift;
+    my $client = shift;
+    
+    if(${*$self}->{SOCKS}->{queue_results}{\&_socks5_accept} == AUTHMECH_USERPASS)
+    {
+        unshift @{${*$self}->{SOCKS}->{queue}}, [\&_socks5_accept_auth, [$self, $client], undef, [], 0];
+        (${*$self}->{SOCKS}->{queue}[0], ${*$self}->{SOCKS}->{queue}[1])
+                                        =
+        (${*$self}->{SOCKS}->{queue}[1], ${*$self}->{SOCKS}->{queue}[0]);
+    }
+    
+    1;
+}
 
 ###############################################################################
 #
@@ -1062,6 +1086,7 @@ sub _socks5_accept_auth
     my $self = shift;
     my $client = shift;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
+    my ($reads, $sends, $debugs) = (0, 0, 0);
     
     #--------------------------------------------------------------------------
     # Read the auth
@@ -1072,19 +1097,20 @@ sub _socks5_accept_auth
     # | 1  |  1   | 1 to 255 |  1   | 1 to 255 |
     # +----+------+----------+------+----------+
     
-    my $request = $client->_socks_read(2)
-        or return _fail();
+    my $request;
+    $request = $client->_socks_read(2, ++$reads)
+        or return _fail($request);
     
     my ($ver, $ulen) = unpack('CC', $request);
-    $request = $client->_socks_read($ulen+1)
-        or return _fail();
+    $request = $client->_socks_read($ulen+1, ++$reads)
+        or return _fail($request);
     
     my $uname = substr($request, 0, $ulen);
     my $plen = unpack('C', substr($request, $ulen));
-    my $passwd = $client->_socks_read($plen)
-        or return _fail();
+    my $passwd; $passwd = $client->_socks_read($plen, ++$reads)
+        or return _fail($passwd);
     
-    if($debug)
+    if($debug && !$self->_debugged(++$debugs))
     {
         $debug->add(
             ver => $ver,
@@ -1112,10 +1138,10 @@ sub _socks5_accept_auth
     # +----+--------+
     
     $status = $status ? AUTHREPLY_SUCCESS : AUTHREPLY_FAILURE;
-    $client->_socks_send(pack('CC', 1, $status))
-        or return _fail();
+    $request = $client->_socks_send(pack('CC', 1, $status), ++$sends)
+        or return _fail($request);
     
-    if($debug)
+    if($debug && !$self->_debugged(++$debugs))
     {
         $debug->add(
             ver => 1,
@@ -1126,7 +1152,7 @@ sub _socks5_accept_auth
     
     if ($status != AUTHREPLY_SUCCESS)
     {
-        $SOCKS_ERROR = "Authentication failed with SOCKS5 proxy.";
+        $SOCKS_ERROR = "Authentication failed with SOCKS5 proxy";
         return;
     }
 
@@ -1145,6 +1171,7 @@ sub _socks5_accept_command
     my $self = shift;
     my $client = shift;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
+    my ($reads, $sends, $debugs) = (0, 0, 0);
     
     @{${*$client}->{SOCKS}->{COMMAND}} = ();
 
@@ -1157,11 +1184,12 @@ sub _socks5_accept_command
     # | 1  |  1  | X'00' |  1   | Variable |    2     |
     # +----+-----+-------+------+----------+----------+
     
-    my $request = $client->_socks_read(4)
-        or return _fail();
+    my $request;
+    $request = $client->_socks_read(4, ++$reads)
+        or return _fail($request);
     
     my ($ver, $cmd, $rsv, $atyp) = unpack('CCCC', $request);
-    if($debug)
+    if($debug && !$self->_debugged(++$debugs))
     {
         $debug->add(
             ver => $ver,
@@ -1174,38 +1202,40 @@ sub _socks5_accept_command
     my $dstaddr;
     if ($atyp == ADDR_DOMAINNAME)
     {
-        defined( $request = $client->_socks_read() )
-            or return _fail();
+        length( $request = $client->_socks_read(1, ++$reads) )
+            or return _fail($request);
         
         my $hlen = unpack('C', $request);
-        $dstaddr = $client->_socks_read($hlen)
-            or return _fail();
+        $dstaddr = $client->_socks_read($hlen, ++$reads)
+            or return _fail($dstaddr);
         
-        if($debug)
+        if($debug && !$self->_debugged(++$debugs))
         {
             $debug->add(hlen => $hlen);
         }
     }
     elsif ($atyp == ADDR_IPV4)
     {
-        $request = $client->_socks_read(4)
-            or return _fail();
+        $request = $client->_socks_read(4, ++$reads)
+            or return _fail($request);
         
         $dstaddr = length($request) == 4 ? inet_ntoa($request) : undef;
     }
     else
     { # unknown address type - how many bytes to read?
-        $client->_socks5_accept_command_reply(REPLY_ADDR_NOT_SUPPORTED, '0.0.0.0', 0);
+        ${*$self}->{SOCKS}->{queue} = [
+            [\&_socks5_accept_command_reply, [$self, REPLY_ADDR_NOT_SUPPORTED, '0.0.0.0', 0], undef, [], 0]
+        ];
         $SOCKS_ERROR = $CODES{REPLY}->{REPLY_ADDR_NOT_SUPPORTED};
-        return;
+        return 1;
     }
     
-    $request = $client->_socks_read(2)
-        or return _fail();
+    $request = $client->_socks_read(2, ++$reads)
+        or return _fail($request);
     
     my $dstport = unpack('n', $request);
     
-    if($debug)
+    if($debug && !$self->_debugged(++$debug))
     {
         $debug->add(
             dstaddr => $dstaddr,
@@ -1235,6 +1265,7 @@ sub _socks5_accept_command_reply
     my $port = shift;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
     my $resolve = defined(${*$self}->{SOCKS}->{Resolve}) ? ${*$self}->{SOCKS}->{Resolve} : $SOCKS5_RESOLVE;
+    my ($reads, $sends, $debugs) = (0, 0, 0);
 
     if (!defined($reply) || !defined($host) || !defined($port))
     {
@@ -1253,10 +1284,10 @@ sub _socks5_accept_command_reply
     my $atyp = $resolve ? ADDR_IPV4 : ADDR_DOMAINNAME;
     my $bndaddr = $resolve ? inet_aton($host) : $host;
     my $hlen = length($bndaddr) unless $resolve;
-    $self->_socks_send(pack('CCCC', SOCKS5_VER, $reply, 0, $atyp) . ($resolve ? '' : pack('C', $hlen)) . $bndaddr . pack('n', $port))
-        or return _fail();
+    my $rc; $rc = $self->_socks_send(pack('CCCC', SOCKS5_VER, $reply, 0, $atyp) . ($resolve ? '' : pack('C', $hlen)) . $bndaddr . pack('n', $port), ++$sends)
+        or return _fail($rc);
     
-    if($debug)
+    if($debug && !$self->_debugged(++$debugs))
     {
         $debug->add(
             ver => SOCKS5_VER,
@@ -1271,6 +1302,8 @@ sub _socks5_accept_command_reply
         );
         $debug->show('Send: ');
     }
+    
+    1;
 }
 
 
@@ -1288,6 +1321,7 @@ sub _socks4_accept_command
     my $client = shift;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
     my $resolve = defined(${*$self}->{SOCKS}->{Resolve}) ? ${*$self}->{SOCKS}->{Resolve} : $SOCKS4_RESOLVE;
+    my ($reads, $sends, $debugs) = (0, 0, 0);
     
     @{${*$client}->{SOCKS}->{COMMAND}} = ();
 
@@ -1300,8 +1334,9 @@ sub _socks4_accept_command
     # |  1  |  1  |    2     |       4       | variable |  1   |
     # +-----+-----+----------+---------------+----------+------+        
     
-    my $request = $client->_socks_read(8)
-        or return _fail();
+    my $request;
+    $request = $client->_socks_read(8, ++$reads)
+        or return _fail($request);
     
     my ($ver, $cmd, $dstport) = unpack('CCn', $request);
     substr($request, 0, 4) = '';
@@ -1312,9 +1347,9 @@ sub _socks4_accept_command
     
     while(1)
     {
-        defined( $c = $client->_socks_read() )
-            or return _fail();
-            
+        length( $c = $client->_socks_read(1, ++$reads) )
+            or return _fail($c);
+        
         if($c ne "\0")
         {
             $userid .= $c;
@@ -1325,7 +1360,7 @@ sub _socks4_accept_command
         }
     }
     
-    if($debug)
+    if($debug && !$self->_debugged(++$debugs))
     {
         $debug->add(
             ver => $ver,
@@ -1343,9 +1378,9 @@ sub _socks4_accept_command
         
         while(1)
         {
-            defined( $c = $client->_socks_read() )
-                or return _fail();
-                
+            length( $c = $client->_socks_read(1, ++$reads) )
+                or return _fail($c);
+            
             if($c ne "\0")
             {
                 $dsthost .= $c;
@@ -1356,7 +1391,7 @@ sub _socks4_accept_command
             }
         }
         
-        if($debug)
+        if($debug && !$self->_debugged(++$debugs))
         {
             $debug->add(
                 dsthost => $dsthost,
@@ -1367,7 +1402,7 @@ sub _socks4_accept_command
         $dstaddr = join('.', unpack('C4', (gethostbyname($dsthost))[4]));
     }
     
-    if($debug)
+    if($debug && !$self->_debugged(++$debugs))
     {
         $debug->show('Recv: ');
     }
@@ -1376,9 +1411,11 @@ sub _socks4_accept_command
     {
         unless( &{${*$self}->{SOCKS}->{UserAuth}}($userid) )
         {
-            $client->_socks4_accept_command_reply(REQUEST_REJECTED_USERID, '0.0.0.0', 0);
+            ${*$self}->{SOCKS}->{queue} = [
+                [\&_socks4_accept_command_reply, [$self, REQUEST_REJECTED_USERID, '0.0.0.0', 0], undef, [], 0]
+            ];
             $SOCKS_ERROR = 'Authentication failed with SOCKS4 proxy.';
-            return;
+            return 1;
         }
     }
     
@@ -1409,6 +1446,7 @@ sub _socks4_accept_command_reply
     my $host = shift;
     my $port = shift;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
+    my ($reads, $sends, $debugs) = (0, 0, 0);
 
     if (!defined($reply) || !defined($host) || !defined($port))
     {
@@ -1425,10 +1463,10 @@ sub _socks4_accept_command_reply
     # +-----+-----+----------+---------------+
     
     my $bndaddr = inet_aton($host);
-    $self->_socks_send(pack('CCna*', 0, $reply, $port, $bndaddr))
-        or return _fail();
+    my $rc; $rc = $self->_socks_send(pack('CCna*', 0, $reply, $port, $bndaddr), ++$sends)
+        or return _fail($rc);
     
-    if($debug)
+    if($debug && !$self->_debugged(++$debugs))
     {
         $debug->add(
             ver => 0,
@@ -1438,6 +1476,8 @@ sub _socks4_accept_command_reply
         );
         $debug->show('Send: ');
     }
+    
+    1;
 }
 
 ###############################################################################
@@ -1486,12 +1526,18 @@ sub command_reply
     
     if(${*$self}->{SOCKS}->{Version} == 4)
     {
-        $self->_socks4_accept_command_reply(@_);
+        ${*$self}->{SOCKS}->{queue} = [
+            [\&_socks4_accept_command_reply, [$self, @_], undef, [], 0]
+        ];
     }
     else
     {
-        $self->_socks5_accept_command_reply(@_);
+        ${*$self}->{SOCKS}->{queue} = [
+            [\&_socks5_accept_command_reply, [$self, @_], undef, [], 0]
+        ];
     }
+    
+    $self->_run_queue();
 }
 
 ###############################################################################
