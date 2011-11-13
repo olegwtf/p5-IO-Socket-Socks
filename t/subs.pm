@@ -18,15 +18,16 @@ sub make_socks_server {
 			if ($delay{accept}) {
 				sleep $delay{accept};
 			}
+			
 			my $client = $serv->accept()
 				or next;
-			
+				
 			my $subchild = fork();
 			die 'subfork: ', $! unless defined $subchild;
 			
 			if ($subchild == 0) {
 				my ($cmd, $host, $port) = @{$client->command()};
-				
+
 				if($cmd == CMD_CONNECT)
 				{ # connect
 					my $socket = IO::Socket::INET->new(PeerHost => $host, PeerPort => $port, Timeout => 10);
