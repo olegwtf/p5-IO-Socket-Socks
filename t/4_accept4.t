@@ -28,6 +28,7 @@ while ($accepted != 10 && $i < 30) {
 		$accepted++;
 		ok($client, "Socks 4 accept() $accepted") or diag $SOCKS_ERROR;
 		if ($client) {
+			$client->blocking(0);
 			$server_clients{$client} = $client;
 		}
 	}

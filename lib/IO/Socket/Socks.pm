@@ -921,7 +921,7 @@ sub accept
         ${*$client}->{SOCKS}->{Version}     = ${*$self}->{SOCKS}->{Version};
         ${*$client}->{SOCKS}->{AuthMethods} = ${*$self}->{SOCKS}->{AuthMethods};
         ${*$client}->{SOCKS}->{UserAuth}    = ${*$self}->{SOCKS}->{UserAuth};
-        $client->blocking($self->blocking); # XXX: this behavior is different from IO::Socket::INET
+        $client->blocking($self->blocking); # temporarily
         
         if(${*$self}->{SOCKS}->{Version} == 4)
         {
@@ -942,6 +942,7 @@ sub accept
         defined( $client->_run_queue() )
             or return;
         
+        $client->blocking(1); # new socket should be in blocking mode
         return $client;
     }
     else
