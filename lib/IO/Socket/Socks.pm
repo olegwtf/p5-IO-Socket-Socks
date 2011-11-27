@@ -379,17 +379,16 @@ sub _connect
     {
         ${*$self}->{SOCKS}->{queue} = [
             # [sub, [@args], buf, [@reads], sends_cnt]
-            [\&_socks4_connect_command, [$self, ${*$self}->{SOCKS}->{Bind} ? CMD_BIND : CMD_CONNECT], undef, [], 0],
-            [\&_socks4_connect_reply, [$self], undef, [], 0]
+            ['_socks4_connect_command', [${*$self}->{SOCKS}->{Bind} ? CMD_BIND : CMD_CONNECT], undef, [], 0],
+            ['_socks4_connect_reply', [], undef, [], 0]
         ];
     }
     else
     {
         ${*$self}->{SOCKS}->{queue} = [
-            [\&_socks5_connect, [$self], undef, [], 0],
-            [\&_socks5_connect_if_auth, [$self], undef, [], 0],
-            [\&_socks5_connect_command, [
-                    $self,
+            ['_socks5_connect', [], undef, [], 0],
+            ['_socks5_connect_if_auth', [], undef, [], 0],
+            ['_socks5_connect_command', [
                     ${*$self}->{SOCKS}->{Bind} ?
                                 CMD_BIND :
                                 ${*$self}->{SOCKS}->{TCP} ?
@@ -398,7 +397,7 @@ sub _connect
                 ],
              undef, [], 0
             ],
-            [\&_socks5_connect_reply, [$self], undef, [], 0]
+            ['_socks5_connect_reply', [], undef, [], 0]
         ];
     }
     
@@ -419,10 +418,12 @@ sub _run_queue
     my $self = shift;
     
     my $retval;
+    my $sub;
     
     while(my $elt = ${*$self}->{SOCKS}->{queue}[0])
     {
-        $retval = $elt->[Q_SUB]->(@{$elt->[Q_ARGS]});
+        $sub = $elt->[Q_SUB];
+        $retval = $self->$sub(@{$elt->[Q_ARGS]});
         unless (defined $retval)
         {
             ${*$self}->{SOCKS}->{queue} = [];
@@ -541,9 +542,9 @@ sub _socks5_connect
 sub _socks5_connect_if_auth
 {
     my $self = shift;
-    if(${*$self}->{SOCKS}->{queue_results}{\&_socks5_connect} != AUTHMECH_ANON)
+    if(${*$self}->{SOCKS}->{queue_results}{'_socks5_connect'} != AUTHMECH_ANON)
     {
-        unshift @{${*$self}->{SOCKS}->{queue}}, [\&_socks5_connect_auth, [$self], undef, [], 0];
+        unshift @{${*$self}->{SOCKS}->{queue}}, ['_socks5_connect_auth', [], undef, [], 0];
         (${*$self}->{SOCKS}->{queue}[0], ${*$self}->{SOCKS}->{queue}[1])
                                         =
         (${*$self}->{SOCKS}->{queue}[1], ${*$self}->{SOCKS}->{queue}[0]);
@@ -921,21 +922,22 @@ sub accept
         ${*$client}->{SOCKS}->{Version}     = ${*$self}->{SOCKS}->{Version};
         ${*$client}->{SOCKS}->{AuthMethods} = ${*$self}->{SOCKS}->{AuthMethods};
         ${*$client}->{SOCKS}->{UserAuth}    = ${*$self}->{SOCKS}->{UserAuth};
+        ${*$client}->{SOCKS}->{ready} = 0;
         $client->blocking($self->blocking); # temporarily
         
         if(${*$self}->{SOCKS}->{Version} == 4)
         {
             ${*$client}->{SOCKS}->{queue} = [
-                [\&_socks4_accept_command, [$client], undef, [], 0]
+                ['_socks4_accept_command', [], undef, [], 0]
             ];
             
         }
         else
         {
             ${*$client}->{SOCKS}->{queue} = [
-                [\&_socks5_accept, [$client], undef, [], 0],
-                [\&_socks5_accept_if_auth, [$client], undef, [], 0],
-                [\&_socks5_accept_command, [$client], undef, [], 0]
+                ['_socks5_accept', [], undef, [], 0],
+                ['_socks5_accept_if_auth', [], undef, [], 0],
+                ['_socks5_accept_command', [], undef, [], 0]
             ];
         }
         
@@ -950,11 +952,11 @@ sub accept
         ${*$self}->{SOCKS}->{ready} = 0;
         if({*$self}->{SOCKS}->{Version} == 4)
         {
-            push @{${*$self}->{SOCKS}->{queue}}, [\&_socks4_connect_reply, [$self], undef, [], 0];
+            push @{${*$self}->{SOCKS}->{queue}}, ['_socks4_connect_reply', [], undef, [], 0];
         }
         else
         {
-            push @{${*$self}->{SOCKS}->{queue}}, [\&_socks5_connect_reply, [$self], undef, [], 0];
+            push @{${*$self}->{SOCKS}->{queue}}, ['_socks5_connect_reply', [], undef, [], 0];
         }
         
         defined( $self->_run_queue() )
@@ -1067,9 +1069,9 @@ sub _socks5_accept_if_auth
 {
     my $self = shift;
     
-    if(${*$self}->{SOCKS}->{queue_results}{\&_socks5_accept} == AUTHMECH_USERPASS)
+    if(${*$self}->{SOCKS}->{queue_results}{'_socks5_accept'} == AUTHMECH_USERPASS)
     {
-        unshift @{${*$self}->{SOCKS}->{queue}}, [\&_socks5_accept_auth, [$self], undef, [], 0];
+        unshift @{${*$self}->{SOCKS}->{queue}}, ['_socks5_accept_auth', [], undef, [], 0];
         (${*$self}->{SOCKS}->{queue}[0], ${*$self}->{SOCKS}->{queue}[1])
                                         =
         (${*$self}->{SOCKS}->{queue}[1], ${*$self}->{SOCKS}->{queue}[0]);
@@ -1224,7 +1226,7 @@ sub _socks5_accept_command
     else
     { # unknown address type - how many bytes to read?
         ${*$self}->{SOCKS}->{queue} = [
-            [\&_socks5_accept_command_reply, [$self, REPLY_ADDR_NOT_SUPPORTED, '0.0.0.0', 0], undef, [], 0]
+            ['_socks5_accept_command_reply', [REPLY_ADDR_NOT_SUPPORTED, '0.0.0.0', 0], undef, [], 0]
         ];
         $SOCKS_ERROR = $CODES{REPLY}->{REPLY_ADDR_NOT_SUPPORTED};
         return 1;
@@ -1411,7 +1413,7 @@ sub _socks4_accept_command
         unless( &{${*$self}->{SOCKS}->{UserAuth}}($userid) )
         {
             ${*$self}->{SOCKS}->{queue} = [
-                [\&_socks4_accept_command_reply, [$self, REQUEST_REJECTED_USERID, '0.0.0.0', 0], undef, [], 0]
+                ['_socks4_accept_command_reply', [REQUEST_REJECTED_USERID, '0.0.0.0', 0], undef, [], 0]
             ];
             $SOCKS_ERROR = 'Authentication failed with SOCKS4 proxy.';
             return 1;
@@ -1526,13 +1528,13 @@ sub command_reply
     if(${*$self}->{SOCKS}->{Version} == 4)
     {
         ${*$self}->{SOCKS}->{queue} = [
-            [\&_socks4_accept_command_reply, [$self, @_], undef, [], 0]
+            ['_socks4_accept_command_reply', [@_], undef, [], 0]
         ];
     }
     else
     {
         ${*$self}->{SOCKS}->{queue} = [
-            [\&_socks5_accept_command_reply, [$self, @_], undef, [], 0]
+            ['_socks5_accept_command_reply', [@_], undef, [], 0]
         ];
     }
     
