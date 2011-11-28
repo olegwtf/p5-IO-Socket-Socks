@@ -15,4 +15,8 @@ README
 t/1_load.t
 t/2_new.t
 t/3_conect.t
+t/4_accept4.t
+t/5_accept5.t
+t/6_accept_nb4.t
+t/7_accept_nb5.t
 t/subs.pm

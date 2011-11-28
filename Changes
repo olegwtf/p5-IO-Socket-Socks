@@ -1,3 +1,8 @@
+0.60
+====
+  - Added support for non-blocking clients accept on the server side
+  - new_from_fd() is now alias to new_from_socket()
+
 0.51
 ====
   - Non-blocking connect on BSD systems could break connection with ENOTCONN error

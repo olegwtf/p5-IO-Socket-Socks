@@ -67,7 +67,7 @@ use constant
 );
 %EXPORT_TAGS = (constants => ['SOCKS_WANT_READ', 'SOCKS_WANT_WRITE', @EXPORT_OK]);
 
-$VERSION = '0.51';
+$VERSION = '0.60';
 $SOCKS5_RESOLVE = 1;
 $SOCKS4_RESOLVE = 0;
 $SOCKS_DEBUG = $ENV{SOCKS_DEBUG};
@@ -1524,6 +1524,7 @@ sub command
 sub command_reply
 {
     my $self = shift;
+    ${*$self}->{SOCKS}->{ready} = 0;
     
     if(${*$self}->{SOCKS}->{Version} == 4)
     {
@@ -2087,9 +2088,11 @@ subdirectory in the distribution.
 
 =head3 new_from_socket($socket, %cfg)
 
+=head3 new_from_fd($socket, %cfg)
+
 Creates a new IO::Socket::Socks client object.  new_from_socket() is the same as
-new(), but allows one to create object from an existing socket. Both takes the following
-config hash:
+new(), but allows one to create object from an existing socket (new_from_fd is new_from_socket alias).
+Both takes the following config hash:
 
   SocksVersion => 4 or 5. Default is 5
   
@@ -2233,13 +2236,19 @@ after bind/udpassoc.
 
 =head3 new_from_socket($socket, %cfg)
 
+=head3 new_from_fd($socket, %cfg)
+
 Creates a new IO::Socket::Socks server object. new_from_socket() is the same as
-new(), but allows one to create object from an existing socket. Both takes the following
-config hash:
+new(), but allows one to create object from an existing socket (new_from_fd is new_from_socket alias).
+Both takes the following config hash:
 
   SocksVersion => 4 for socks v4, 5 for socks v5. Default is 5
   
   Timeout => Timeout value for various operations
+  
+  Blocking => Since IO::Socket::Socks version 0.6 you can perform non-blocking accept by 
+              passing false value for this option. Default is true - blocking. See ready()
+              below for more details.
   
   SocksResolve => For socks v5: return destination address to the client
                   in form of 4 bytes if true, otherwise in form of host
@@ -2281,6 +2290,56 @@ Accept an incoming connection and return a new IO::Socket::Socks
 object that represents that connection.  You must call command()
 on this to find out what the incoming connection wants you to do,
 and then call command_reply() to send back the reply.
+
+=head3 ready( )
+
+After non-blocking accept you will get new client socket object, which may be
+not ready to transfer data (if socks handshake is not done yet). ready() will return
+true value when handshake will be done successfully and false otherwise. Note, socket
+returned by accept() call will be always in blocking mode. So if your program can't
+block you should set non-blocking mode for this socket before ready() call: $socket->blocking(0).
+When ready() returns false value you can determine what socks handshake needs for with $SOCKS_ERROR
+variable. It may need for read, then $SOCKS_ERROR will be SOCKS_WANT_READ or need for
+write, then it will be SOCKS_WANT_WRITE.
+
+Example:
+
+  use IO::Socket::Socks;
+  use IO::Select;
+  
+  my $server = IO::Socket::Socks->new(ProxyAddr => 'localhost', ProxyPort => 1080, Blocking => 0)
+      or die $@;
+  my $select = IO::Select->new($server);
+  $select->can_read(); # wait for client
+  
+  my $client = $server->accept()
+    or die "accept(): $! ($SOCKS_ERROR)";
+  $client->blocking(0); # !!!
+  $select->add($client);
+  $select->remove($server); # no more connections
+  
+  while (1) {
+      if ($client->ready) {
+          my $command = $client->command;
+          
+          ... # do client command
+          
+          $client->command_reply(IO::Socket::Socks::REPLY_SUCCESS, $command->[1], $command->[2]);
+          
+          ... # transfer traffic
+          
+          last;
+      }
+      elsif ($SOCKS_ERROR == SOCKS_WANT_READ) {
+          $select->can_read();
+      }
+      elsif ($SOCKS_ERROR == SOCKS_WANT_WRITE) {
+          $select->can_write();
+      }
+      else {
+          die "Unexpected error: $SOCKS_ERROR";
+      }
+  }
 
 =head3 command( )
 

@@ -13,35 +13,26 @@ our $DELAY = 0;
 
 sub _socks4_connect_command
 {
-    my $self = shift;
-    my $command = shift;
-    my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
-    my ($reads, $sends, $debugs) = (0, 0, 0);
-    my $resolve = defined(${*$self}->{SOCKS}->{Resolve}) ? ${*$self}->{SOCKS}->{Resolve} : $IO::Socket::Socks::SOCKS4_RESOLVE;
-    
-    #--------------------------------------------------------------------------
-    # Send the command
-    #--------------------------------------------------------------------------
-    # +-----+-----+----------+---------------+----------+------+   
-    # | VER | CMD | DST.PORT |   DST.ADDR    |  USERID  | NULL |
-    # +-----+-----+----------+---------------+----------+------+
-    # |  1  |  1  |    2     |       4       | variable |  1   |
-    # +-----+-----+----------+---------------+----------+------+
-    
-    my $dstaddr = $resolve ? inet_aton('0.0.0.1') : inet_aton(${*$self}->{SOCKS}->{CmdAddr});
-    my $dstport = pack('n', ${*$self}->{SOCKS}->{CmdPort});
-    my $userid  = ${*$self}->{SOCKS}->{Username};
-    my $dsthost;
-    if($resolve)
-    { # socks4a
-        $dsthost = ${*$self}->{SOCKS}->{CmdAddr} . pack('C', 0);
-    }
-    
-    my $reply;
-    my $request = pack('CC', SOCKS4_VER, $command) . $dstport . $dstaddr . $userid . pack('C', 0) . $dsthost;
-    my $sent = 0;
-    
-    while ($request =~ /(..{0,3})/g) {
+	my $self = shift;
+	my $command = shift;
+	my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
+	my ($reads, $sends, $debugs) = (0, 0, 0);
+	my $resolve = defined(${*$self}->{SOCKS}->{Resolve}) ? ${*$self}->{SOCKS}->{Resolve} : $IO::Socket::Socks::SOCKS4_RESOLVE;
+	
+	my $dstaddr = $resolve ? inet_aton('0.0.0.1') : inet_aton(${*$self}->{SOCKS}->{CmdAddr});
+	my $dstport = pack('n', ${*$self}->{SOCKS}->{CmdPort});
+	my $userid  = ${*$self}->{SOCKS}->{Username};
+	my $dsthost;
+	if($resolve)
+	{ # socks4a
+		$dsthost = ${*$self}->{SOCKS}->{CmdAddr} . pack('C', 0);
+	}
+	
+	my $reply;
+	my $request = pack('CC', SOCKS4_VER, $command) . $dstport . $dstaddr . $userid . pack('C', 0) . $dsthost;
+	my $sent = 0;
+	
+	while ($request =~ /(..{0,3})/g) {
 		$reply = $self->_socks_send($1, ++$sends)
 			or return _fail($reply);
 		
@@ -50,28 +41,28 @@ sub _socks4_connect_command
 		
 		sleep $DELAY;
 	}
-        
-    if($debug && !$self->_debugged(++$debugs))
-    {
-        $debug->add(
-            ver => SOCKS4_VER,
-            cmd => $command,
-            dstport => ${*$self}->{SOCKS}->{CmdPort},
-            dstaddr => length($dstaddr) == 4 ? inet_ntoa($dstaddr) : undef,
-            userid => $userid,
-            null => 0
-        );
-        if($dsthost)
-        {
-            $debug->add(
-                dsthost => ${*$self}->{SOCKS}->{CmdAddr},
-                null => 0
-            );
-        }
-        $debug->show('Client Send: ');
-    }
-    
-    return 1;
+		
+	if($debug && !$self->_debugged(++$debugs))
+	{
+		$debug->add(
+			ver => SOCKS4_VER,
+			cmd => $command,
+			dstport => ${*$self}->{SOCKS}->{CmdPort},
+			dstaddr => length($dstaddr) == 4 ? inet_ntoa($dstaddr) : undef,
+			userid => $userid,
+			null => 0
+		);
+		if($dsthost)
+		{
+			$debug->add(
+				dsthost => ${*$self}->{SOCKS}->{CmdAddr},
+				null => 0
+			);
+		}
+		$debug->show('Client Send: ');
+	}
+	
+	return 1;
 }
 
 package main;
