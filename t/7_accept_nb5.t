@@ -188,7 +188,8 @@ while ($conn_cnt < CONN_CNT || $sel_read->count() > 1 || $sel_write->count() > 0
 			ok(0, '$SOCKS_ERROR is known') or diag $SOCKS_ERROR;
 		}
 		
-		ok(Time::HiRes::time() - $start < 1, "ready() not blocked");
+		my $time_spent = Time::HiRes::time() - $start;
+		ok($time_spent < 1, "ready() not blocked") or diag "$time_spent sec spent";
 	}
 }
 

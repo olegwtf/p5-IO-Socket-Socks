@@ -174,7 +174,7 @@ while ($conn_cnt < CONN_CNT || $sel_read->count() > 1 || $sel_write->count() > 0
 		}
 		
 		my $res = Time::HiRes::time() - $start;
-		ok($res < 1, "ready() not blocked") or diag "$res sec.";
+		ok($res < 1, "ready() not blocked") or diag "$res sec spent";
 	}
 }
 

@@ -2472,7 +2472,7 @@ SOCKS_WANT_READ, SOCKS_WANT_WRITE and ESOCKSPROTO are imported by default.
 
 =over
 
-=item How to determine is connect to socks server (client accept) failed or some protocol error
+=item How to determine is connection to socks server (client accept) failed or some protocol error
 occurred
 
 You can check $! variable. If $! == ESOCKSPROTO constant, then it was error in the protocol. Error
