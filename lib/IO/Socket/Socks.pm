@@ -33,10 +33,11 @@ use constant
 {
     SOCKS_WANT_READ  => 20,
     SOCKS_WANT_WRITE => 21,
+    ESOCKSPROTO => exists &Errno::EPROTO ? &Errno::EPROTO : 7000,
 };
 
 @ISA = qw(Exporter IO::Socket::INET);
-@EXPORT = qw( $SOCKS_ERROR SOCKS_WANT_READ SOCKS_WANT_WRITE );
+@EXPORT = qw( $SOCKS_ERROR SOCKS_WANT_READ SOCKS_WANT_WRITE ESOCKSPROTO );
 @EXPORT_OK = qw(
     SOCKS5_VER
     SOCKS4_VER
@@ -532,6 +533,7 @@ sub _socks5_connect
     
     if ($auth_method == AUTHMECH_INVALID)
     {
+        $! = ESOCKSPROTO;
         $SOCKS_ERROR = $CODES{AUTHMECH}->[$auth_method];
         return;
     }
@@ -622,6 +624,7 @@ sub _socks5_connect_auth
 
     if ($status != AUTHREPLY_SUCCESS)
     {
+        $! = ESOCKSPROTO;
         $SOCKS_ERROR = "Authentication failed with SOCKS5 proxy.";
         return;
     }
@@ -750,6 +753,7 @@ sub _socks5_connect_reply
     }
     else
     {
+        $! = ESOCKSPROTO;
         $SOCKS_ERROR = "Unsupported address type returned by socks server: $atyp";
         return;
     }
@@ -769,6 +773,7 @@ sub _socks5_connect_reply
    
     if($rep != REPLY_SUCCESS)
     {
+        $! = ESOCKSPROTO;
         $SOCKS_ERROR = $CODES{REPLY}->{$rep};
         return;
     }
@@ -876,6 +881,7 @@ sub _socks4_connect_reply
     
     if($rep != REQUEST_GRANTED)
     {
+        $! = ESOCKSPROTO;
         $SOCKS_ERROR = $CODES{REPLY}->{$rep};
         return;
     }
@@ -1009,12 +1015,14 @@ sub _socks5_accept
     
     if($ver != SOCKS5_VER)
     {
+        $! = ESOCKSPROTO;
         $SOCKS_ERROR = "Socks version should be 5, $ver recieved";
         return;
     }
     
     if ($nmethods == 0)
     {
+        $! = ESOCKSPROTO;
         $SOCKS_ERROR = "No auth methods sent";
         return;
     }
@@ -1058,6 +1066,7 @@ sub _socks5_accept
 
     if ($authmech == AUTHMECH_INVALID)
     {
+        $! = ESOCKSPROTO;
         $SOCKS_ERROR = "No available auth methods.";
         return;
     }
@@ -1155,6 +1164,7 @@ sub _socks5_accept_auth
     
     if ($status != AUTHREPLY_SUCCESS)
     {
+        $! = ESOCKSPROTO;
         $SOCKS_ERROR = "Authentication failed with SOCKS5 proxy";
         return;
     }
@@ -1228,6 +1238,7 @@ sub _socks5_accept_command
         ${*$self}->{SOCKS}->{queue} = [
             ['_socks5_accept_command_reply', [REPLY_ADDR_NOT_SUPPORTED, '0.0.0.0', 0], undef, [], 0]
         ];
+        $! = ESOCKSPROTO;
         $SOCKS_ERROR = $CODES{REPLY}->{REPLY_ADDR_NOT_SUPPORTED};
         return 1;
     }
@@ -1415,6 +1426,7 @@ sub _socks4_accept_command
             ${*$self}->{SOCKS}->{queue} = [
                 ['_socks4_accept_command_reply', [REQUEST_REJECTED_USERID, '0.0.0.0', 0], undef, [], 0]
             ];
+            $! = ESOCKSPROTO;
             $SOCKS_ERROR = 'Authentication failed with SOCKS4 proxy.';
             return 1;
         }
@@ -1422,6 +1434,7 @@ sub _socks4_accept_command
     
     if($ver != SOCKS4_VER)
     {
+        $! = ESOCKSPROTO;
         $SOCKS_ERROR = "Socks version should be 4, $ver recieved";
         return;
     }
@@ -1686,6 +1699,7 @@ sub recv
     }
     else
     {
+        $! = ESOCKSPROTO;
         $SOCKS_ERROR = "Unsupported address type returned by socks server: $atyp";
         return;
     }
@@ -1759,7 +1773,7 @@ sub _socks_send
             }
             else
             {
-                $SOCKS_ERROR = $!;
+                $SOCKS_ERROR = "send: $!";
                 last;
             }
         }
@@ -1773,8 +1787,14 @@ sub _socks_send
     my $selector = IO::Select->new($self);
     my $start = time();
     
-    while(!${*$self}{io_socket_timeout} || time() - $start < ${*$self}{io_socket_timeout})
+    while(1)
     {
+        if(${*$self}{io_socket_timeout} && time() - $start >= ${*$self}{io_socket_timeout})
+        {
+            $! = Errno::ETIMEDOUT;
+            last;
+        }
+        
         unless($selector->can_write(1))
         { # socket couldn't accept data for now, check if timeout expired and try again
             next;
@@ -1792,7 +1812,7 @@ sub _socks_send
         }
         else
         { # some error in the socket; will return false
-            $SOCKS_ERROR = $! unless defined $rc;
+            $SOCKS_ERROR = "send: $!" unless defined $rc;
             last;
         }
     }
@@ -1853,7 +1873,7 @@ sub _socks_read
             }
             else
             {
-                $SOCKS_ERROR = $!;
+                $SOCKS_ERROR = "read: $!";
                 last;
             }
         }
@@ -1867,8 +1887,14 @@ sub _socks_read
     my $selector = IO::Select->new($self);
     my $start = time();
     
-    while($length > 0 && (!${*$self}{io_socket_timeout} || time() - $start < ${*$self}{io_socket_timeout}))
+    while($length > 0)
     {
+        if(${*$self}{io_socket_timeout} && time() - $start >= ${*$self}{io_socket_timeout})
+        {
+            $! = Errno::ETIMEDOUT;
+            last;
+        }
+        
         unless($selector->can_read(1))
         { # no data in socket for now, check if timeout expired and try again
             next;
@@ -1882,11 +1908,12 @@ sub _socks_read
         }
         else
         { # EOF or error in the socket
-            $SOCKS_ERROR = $! unless defined $rc;
+            $SOCKS_ERROR = "read: $!" unless defined $rc;
             last;
         }
     }
     
+    # XXX it may return incomplete $data if timed out. Could it break smth?
     return $data;
 }
 
@@ -2437,8 +2464,21 @@ The following constants could be imported manually or using `:constants' tag:
   REQUEST_REJECTED_USERID
   SOCKS_WANT_READ
   SOCKS_WANT_WRITE
+  ESOCKSPROTO
 
-SOCKS_WANT_READ and SOCKS_WANT_WRITE are imported by default.
+SOCKS_WANT_READ, SOCKS_WANT_WRITE and ESOCKSPROTO are imported by default.
+
+=head1 FAQ
+
+=over
+
+=item How to determine is connect to socks server (client accept) failed or some protocol error
+occurred
+
+You can check $! variable. If $! == ESOCKSPROTO constant, then it was error in the protocol. Error
+description could be found in $SOCKS_ERROR.
+
+=back
 
 =head1 BUGS
 

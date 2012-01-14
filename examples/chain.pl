@@ -35,8 +35,8 @@ while(@chain)
             {
                 $len++;
             }
-            elsif($SOCKS_ERROR eq 'Connection to proxy failed.')
-            {
+            elsif($! != ESOCKSPROTO)
+            { # connection to proxy failed
                 shift @chain;
                 next TRY;
             }
