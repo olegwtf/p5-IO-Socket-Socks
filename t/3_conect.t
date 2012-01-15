@@ -39,6 +39,9 @@ $sock = IO::Socket::Socks->new(
 	AuthType => 'userpass'
 );
 ok(!defined($sock), 'Socks 5 connect with auth and incorrect password');
+ok($! == ESOCKSPROTO, '$! == ESOCKSPROTO') or diag int($!), "!=", ESOCKSPROTO;
+ok($SOCKS_ERROR == IO::Socket::Socks::AUTHREPLY_FAILURE, '$SOCKS_ERROR == AUTHREPLY_FAILURE')
+    or diag int($SOCKS_ERROR), "!=", IO::Socket::Socks::AUTHREPLY_FAILURE;
 
 kill 15, $s_pid;
 ($s_pid, $s_host, $s_port) = make_socks_server(4, undef, undef, accept => 3, reply => 2);
