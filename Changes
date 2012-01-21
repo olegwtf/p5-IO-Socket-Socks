@@ -1,3 +1,10 @@
+0.61
+====
+  - Set $! to ESOCKPROTO (new module constant) on error in the protocol
+  - Set $@ on error
+  - $SOCKS_ERROR now behaves more like $!: string or number in appropriate contexts
+  - Return socket to non-blocking state after new_from_fd if socket was non-blocking before
+
 0.60
 ====
   - Added support for non-blocking clients accept on the server side
