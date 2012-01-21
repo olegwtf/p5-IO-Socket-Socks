@@ -1742,7 +1742,7 @@ sub recv
 #+-----------------------------------------------------------------------------
 ###############################################################################
 sub _socks_send
-{
+{ # this sub may cause SIGPIPE if you'll not alternate it call with _socks_read()
     my $self = shift;
     my $data = shift;
     my $numb = shift;
