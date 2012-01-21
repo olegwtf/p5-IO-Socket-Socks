@@ -7,6 +7,10 @@ sub make_socks_server {
 	my ($version, $login, $password, %delay) = @_;
 	
 	my $serv = IO::Socket::Socks->new(Listen => 3, SocksVersion => $version, RequireAuth => ($login && $password), UserAuth => sub {
+		$login = ''    unless defined $login;
+		$password = '' unless defined $password;
+		$_[0] = '' unless defined $_[0];
+		$_[1] = '' unless defined $_[1];
 		return $_[0] eq $login && $_[1] eq $password;
 	}) or die $@;
 	

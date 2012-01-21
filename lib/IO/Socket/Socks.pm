@@ -71,7 +71,7 @@ use constant
 %EXPORT_TAGS = (constants => ['SOCKS_WANT_READ', 'SOCKS_WANT_WRITE', @EXPORT_OK]);
 $SOCKS_ERROR = new IO::Socket::Socks::Error;
 
-$VERSION = '0.60';
+$VERSION = '0.61';
 $SOCKS5_RESOLVE = 1;
 $SOCKS4_RESOLVE = 0;
 $SOCKS_DEBUG = $ENV{SOCKS_DEBUG};
@@ -823,8 +823,8 @@ sub _socks4_connect_command
     
     my $dstaddr = $resolve ? inet_aton('0.0.0.1') : inet_aton(${*$self}->{SOCKS}->{CmdAddr});
     my $dstport = pack('n', ${*$self}->{SOCKS}->{CmdPort});
-    my $userid  = ${*$self}->{SOCKS}->{Username};
-    my $dsthost;
+    my $userid  = ${*$self}->{SOCKS}->{Username} || '';
+    my $dsthost = '';
     if($resolve)
     { # socks4a
         $dsthost = ${*$self}->{SOCKS}->{CmdAddr} . pack('C', 0);
@@ -1922,7 +1922,7 @@ sub _socks_read
         }
         
         $rc = $self->sysread($buf, $length);
-        if($rc > 0)
+        if(defined $rc && $rc > 0)
         { # reduce limit and modify buffer
             $length -= $rc;
             $data .= $buf;
@@ -1993,7 +1993,7 @@ sub set
 {
     my ($self, $num, $str) = @_;
     
-    $self->{num} = int($num);
+    $self->{num} = defined $num ? int($num) : $num;
     $self->{str} = $str;
 }
 
