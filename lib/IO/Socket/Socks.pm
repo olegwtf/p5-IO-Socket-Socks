@@ -1930,7 +1930,7 @@ sub _socks_read
         else
         { # EOF or error in the socket
             $SOCKS_ERROR->set($!, $@ = "read: $!") unless defined $rc;
-            last;
+            last; # TODO handle unexpected EOF more correct
         }
     }
     

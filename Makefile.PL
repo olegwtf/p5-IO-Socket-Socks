@@ -4,9 +4,11 @@ use ExtUtils::MakeMaker;
 # the contents of the Makefile that is written.
 
 WriteMakefile(
-    'NAME'      => 'IO::Socket::Socks',
-    'LICENSE'   => 'lgpl',
-    'PREREQ_PM' => { 'IO::Socket::INET'  => 0, 'IO::Select' => 0, 'Test::More' => 0.88 },
+    'NAME'               => 'IO::Socket::Socks',
+    'LICENSE'            => 'lgpl',
+    'PREREQ_PM'          => { 'IO::Socket::INET'  => 0, 'IO::Select' => 0 },
+    'BUILD_REQUIRES'     => { 'Test::More' => 0.88 },
+    'CONFIGURE_REQUIRES' => { 'ExtUtils::MakeMaker' => 6.52 },
     'META_MERGE' => { resources => {repository => 'https://github.com/olegwtf/p5-IO-Socket-Socks'} },
     'VERSION_FROM'  => 'lib/IO/Socket/Socks.pm',
     ($] >= 5.005 ?     ## Add these new keywords supported since 5.005
