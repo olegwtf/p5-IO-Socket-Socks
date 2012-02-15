@@ -16,7 +16,7 @@
 #  Boston, MA  02111-1307, USA.
 #
 #  Copyright (C) 2003 Ryan Eatmon
-#  Copyright (C) 2010-2011 Oleg G
+#  Copyright (C) 2010-2012 Oleg G
 #
 ##############################################################################
 package IO::Socket::Socks;
@@ -71,7 +71,7 @@ use constant
 %EXPORT_TAGS = (constants => ['SOCKS_WANT_READ', 'SOCKS_WANT_WRITE', @EXPORT_OK]);
 $SOCKS_ERROR = new IO::Socket::Socks::Error;
 
-$VERSION = '0.61';
+$VERSION = '0.62_1';
 $SOCKS5_RESOLVE = 1;
 $SOCKS4_RESOLVE = 0;
 $SOCKS_DEBUG = $ENV{SOCKS_DEBUG};
@@ -2457,7 +2457,7 @@ by accept(). It returns a reference to an array with the following format:
 =head3 command_reply( REPLY CODE, HOST, PORT )
 
 After you call command() the client needs to be told what the result
-is.  The REPLY CODE is as follows (integer value):
+is.  The REPLY CODE is one of the constants as follows (integer value):
 
   For socks v4
   REQUEST_GRANTED(90): request granted
@@ -2483,7 +2483,7 @@ command.
 
 =head2 $SOCKS_ERROR
 
-This scalar behaves like $! in that if undef is returned. C<$SOCKS_ERROR> is IO::Socket::Socks::ERROR
+This scalar behaves like $! in that if undef is returned. C<$SOCKS_ERROR> is IO::Socket::Socks::Error
 object with some overloaded operators. In string context this variable should contain a string reason for
 the error. In numeric context it contains error code.
 
