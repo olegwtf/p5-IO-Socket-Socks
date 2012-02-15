@@ -38,8 +38,9 @@ $sock = IO::Socket::Socks->new(
 	SocksVersion => 5, ProxyAddr => $s_host, ProxyPort => $s_port, ConnectAddr => $h_host, ConnectPort => $h_port, Username => 'root', Password => '123',
 	AuthType => 'userpass'
 );
+my $error = int($!); # save it immediately after fail
 ok(!defined($sock), 'Socks 5 connect with auth and incorrect password');
-ok($! == ESOCKSPROTO, '$! == ESOCKSPROTO') or diag int($!), "!=", ESOCKSPROTO;
+ok($error == ESOCKSPROTO, '$! == ESOCKSPROTO') or diag $error, "!=", ESOCKSPROTO;
 ok($SOCKS_ERROR == IO::Socket::Socks::AUTHREPLY_FAILURE, '$SOCKS_ERROR == AUTHREPLY_FAILURE')
     or diag int($SOCKS_ERROR), "!=", IO::Socket::Socks::AUTHREPLY_FAILURE;
 
@@ -50,15 +51,13 @@ $sock = IO::Socket::Socks->new(
 	SocksVersion => 4, ProxyAddr => $s_host, ProxyPort => $s_port, ConnectAddr => $h_host, ConnectPort => $h_port
 );
 ok(defined($sock), 'Socks 4 blocking connect success');
-my $time_spent = time()-$start;
-ok($time_spent >= 5, 'Socks 4 blocking connect time') or diag "$time_spent sec spent";
 
 $start = time();
 $sock = IO::Socket::Socks->new(
 	SocksVersion => 4, ProxyAddr => $s_host, ProxyPort => $s_port, ConnectAddr => $h_host, ConnectPort => $h_port, Blocking => 0
 );
 ok(defined($sock), 'Socks 4 non-blocking connect success');
-$time_spent = time()-$start;
+my $time_spent = time()-$start;
 ok($time_spent < 3, 'Socks 4 non-blocking connect time') or diag "$time_spent sec spent";
 my $sel = IO::Select->new($sock);
 my $i = 0;
@@ -82,6 +81,7 @@ ok($sock->ready, 'Socks 4 non-blocking socket ready') or diag $SOCKS_ERROR;
 
 kill 15, $s_pid;
 ($s_pid, $s_host, $s_port) = make_socks_server(5, 'root', 'toor', accept => 3, reply => 2);
+$start = time();
 $sock = IO::Socket::Socks->new(
 	SocksVersion => 5, ProxyAddr => $s_host, ProxyPort => $s_port, ConnectAddr => $h_host, ConnectPort => $h_port, Username => 'root', Password => 'toor',
 	AuthType => 'userpass', Blocking => 0
