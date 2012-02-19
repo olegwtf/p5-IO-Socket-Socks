@@ -71,7 +71,7 @@ use constant
 %EXPORT_TAGS = (constants => ['SOCKS_WANT_READ', 'SOCKS_WANT_WRITE', @EXPORT_OK]);
 $SOCKS_ERROR = new IO::Socket::Socks::Error;
 
-$VERSION = '0.62_1';
+$VERSION = '0.62_2';
 $SOCKS5_RESOLVE = 1;
 $SOCKS4_RESOLVE = 0;
 $SOCKS_DEBUG = $ENV{SOCKS_DEBUG};
