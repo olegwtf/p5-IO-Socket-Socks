@@ -2454,9 +2454,9 @@ After you call accept() the client has sent the command they want
 you to process.  This function should be called on the socket returned
 by accept(). It returns a reference to an array with the following format:
 
-  [ COMMAND, HOST, PORT ]
+  [ COMMAND, ADDRESS, PORT, ADDRESS TYPE ]
 
-=head3 command_reply( REPLY CODE, HOST, PORT )
+=head3 command_reply( REPLY CODE, ADDRESS, PORT )
 
 After you call command() the client needs to be told what the result
 is.  The REPLY CODE is one of the constants as follows (integer value):
