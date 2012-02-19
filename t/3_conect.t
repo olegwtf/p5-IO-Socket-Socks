@@ -65,8 +65,7 @@ $start = time();
 until ($sock->ready) {
 	$i++;
 	$time_spent = time()-$start;
-	ok($time_spent < 2, "Connection attempt $i not blocked") or diag "$time_spent sec spent";
-	$start = time();
+	ok($time_spent < 1, "Connection attempt $i not blocked") or diag "$time_spent sec spent";
 	if ($SOCKS_ERROR == SOCKS_WANT_READ) {
 		$sel->can_read(0.8);
 	}
@@ -76,6 +75,7 @@ until ($sock->ready) {
 	else {
 		last;
 	}
+	$start = time();
 }
 ok($sock->ready, 'Socks 4 non-blocking socket ready') or diag $SOCKS_ERROR;
 
@@ -95,8 +95,7 @@ $start = time();
 until ($sock->ready) {
 	$i++;
 	$time_spent = time()-$start;
-	ok($time_spent < 2, "Connection attempt $i not blocked") or diag "$time_spent sec spent";
-	$start = time();
+	ok($time_spent < 1, "Connection attempt $i not blocked") or diag "$time_spent sec spent";
 	if ($SOCKS_ERROR == SOCKS_WANT_READ) {
 		$sel->can_read(0.8);
 	}
@@ -106,6 +105,7 @@ until ($sock->ready) {
 	else {
 		last;
 	}
+	$start = time();
 }
 ok($sock->ready, 'Socks 5 non-blocking socket ready') or diag $SOCKS_ERROR;
 
