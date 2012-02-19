@@ -949,6 +949,7 @@ sub accept
         ${*$client}->{SOCKS}->{Version}     = ${*$self}->{SOCKS}->{Version};
         ${*$client}->{SOCKS}->{AuthMethods} = ${*$self}->{SOCKS}->{AuthMethods};
         ${*$client}->{SOCKS}->{UserAuth}    = ${*$self}->{SOCKS}->{UserAuth};
+        ${*$client}->{SOCKS}->{Resolve}     = ${*$self}->{SOCKS}->{Resolve};
         ${*$client}->{SOCKS}->{ready} = 0;
         $client->blocking($self->blocking); # temporarily
         
@@ -1278,7 +1279,7 @@ sub _socks5_accept_command
         $debug->show('Server Recv: ');
     }
     
-    @{${*$self}->{SOCKS}->{COMMAND}} = ($cmd, $dstaddr, $dstport);
+    @{${*$self}->{SOCKS}->{COMMAND}} = ($cmd, $dstaddr, $dstport, $atyp);
 
     return 1;
 }
@@ -1405,9 +1406,12 @@ sub _socks4_accept_command
         );
     }
     
+    my $atyp = ADDR_IPV4;
+    
     if($resolve && $dstaddr =~ /^0\.0\.0\.[1-9]/)
     { # socks4a
-        my $dsthost = '';
+        $dstaddr = '';
+        $atyp = ADDR_DOMAINNAME;
         
         while(1)
         {
@@ -1416,7 +1420,7 @@ sub _socks4_accept_command
             
             if($c ne "\0")
             {
-                $dsthost .= $c;
+                $dstaddr .= $c;
             }
             else
             {
@@ -1427,12 +1431,10 @@ sub _socks4_accept_command
         if($debug && !$self->_debugged(++$debugs))
         {
             $debug->add(
-                dsthost => $dsthost,
+                dsthost => $dstaddr,
                 null => 0
             );
         }
-        
-        $dstaddr = join('.', unpack('C4', (gethostbyname($dsthost))[4]));
     }
     
     if($debug && !$self->_debugged(++$debugs))
@@ -1460,7 +1462,7 @@ sub _socks4_accept_command
         return;
     }
     
-    @{${*$self}->{SOCKS}->{COMMAND}} = ($cmd, $dstaddr, $dstport);
+    @{${*$self}->{SOCKS}->{COMMAND}} = ($cmd, $dstaddr, $dstport, $atyp);
     
     return 1;
 }

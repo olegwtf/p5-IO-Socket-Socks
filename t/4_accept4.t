@@ -13,7 +13,8 @@ my $serverport = $server->sockport;
 
 my %local_clients;
 for (1..10) {
-	my $client = IO::Socket::Socks->new(Blocking => 0, ProxyAddr => $serveraddr, ProxyPort => $serverport, ConnectAddr => '2gis.com', ConnectPort => 8080, SocksVersion => 4);
+	my $client = IO::Socket::Socks->new(Blocking => 0, ProxyAddr => $serveraddr, ProxyPort => $serverport, ConnectAddr => '2gis.com',
+	                                    ConnectPort => 8080, SocksVersion => 4, SocksResolve => 1);
 	ok(defined($client), "Socks 4 client non-blocking connection $_ started");
 	$local_clients{$client} = $client;
 }

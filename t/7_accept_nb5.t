@@ -159,10 +159,9 @@ while ($conn_cnt < CONN_CNT || $sel_read->count() > 1 || $sel_write->count() > 0
 		}
 		
 		if ($socket->ready) {
-			$socket->command_reply(IO::Socket::Socks::REPLY_SUCCESS, $socket->command->[1], $socket->command->[2]);
+			$socket->command_reply(IO::Socket::Socks::REPLY_SUCCESS, '127.0.0.1', $socket->command->[2]);
 			IO::Select->new($socket)->can_read;
-			$socket->sysread(my $request, 1024)
-				or die $!;
+			ok(defined $socket->sysread(my $request, 1024), "sysread() success") or diag $!;
 			my ($d, $r) = $request =~ /(\d+):(.+)/;
 			
 			ok(defined $d, "Correct key") or diag $request;
@@ -170,8 +169,7 @@ while ($conn_cnt < CONN_CNT || $sel_read->count() > 1 || $sel_write->count() > 0
 			is($socket->command->[1], $map{$d}{host}, "Command host ok");
 			is($socket->command->[2], $map{$d}{port}, "Command port ok");
 			
-			$socket->syswrite($map{$d}{response})
-				or die $!;
+			ok(defined $socket->syswrite($map{$d}{response}), "syswrite() success") or diag $!;
 			$sel_read->remove($socket);
 			$sel_write->remove($socket);
 			$socket->close();

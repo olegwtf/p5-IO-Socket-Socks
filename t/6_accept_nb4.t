@@ -100,9 +100,8 @@ for my $d (1..CONN_CNT) {
 		close $reader;
 		
 		$IO::Socket::Socks::Slow::DELAY = $d;
-		my $cli = IO::Socket::Socks::Slow->new(ProxyAddr => $host, ProxyPort => $port, ConnectAddr => $map{$d}{host}, ConnectPort => $map{$d}{port}, SocksVersion => 4)
-			or die $@;
-		
+		my $cli = IO::Socket::Socks::Slow->new(ProxyAddr => $host, ProxyPort => $port, ConnectAddr => $map{$d}{host},
+		                                       ConnectPort => $map{$d}{port}, SocksVersion => 4, SocksResolve => 1) or die $@;
 		$cli->syswrite("$d:$map{$d}{request}")
 			or die $!;
 		$cli->sysread(my $buf, 1024)
@@ -116,7 +115,7 @@ for my $d (1..CONN_CNT) {
 	$childs{$child} = 1;
 }
 
-my $server = IO::Socket::Socks->new(Blocking => 0, Listen => 10, SocksVersion => 4)
+my $server = IO::Socket::Socks->new(Blocking => 0, Listen => 10, SocksVersion => 4, SocksResolve => 1)
 	or die $@;
 
 my $host = $server->sockhost eq "0.0.0.0" ? "127.0.0.1" : $server->sockhost;
@@ -145,18 +144,16 @@ while ($conn_cnt < CONN_CNT || $sel_read->count() > 1 || $sel_write->count() > 0
 		}
 		
 		if ($socket->ready) {
-			$socket->command_reply(IO::Socket::Socks::REQUEST_GRANTED, $socket->command->[1], $socket->command->[2]);
+			$socket->command_reply(IO::Socket::Socks::REQUEST_GRANTED, '127.0.0.1', $socket->command->[2]);
 			IO::Select->new($socket)->can_read;
 			
-			$socket->sysread(my $request, 1024)
-				or die $!;
+			ok(defined $socket->sysread(my $request, 1024), "sysread() success") or diag $!;
 			my ($d, $r) = $request =~ /(\d+):(.+)/;
 			
 			ok(defined $d, "Correct key") or diag $request;
 			is($r, $map{$d}{request}, "Correct request");
 			
-			$socket->syswrite($map{$d}{response})
-				or die $!;
+			ok(defined $socket->syswrite($map{$d}{response}), "syswrite() success") or diag $!;
 			$sel_read->remove($socket);
 			$sel_write->remove($socket);
 			$socket->close();
