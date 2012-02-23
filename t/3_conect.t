@@ -37,8 +37,7 @@ ok(defined($sock), 'Socks 5 connect with auth') or diag $SOCKS_ERROR;
 $sock = IO::Socket::Socks->new(
 	SocksVersion => 5, ProxyAddr => $s_host, ProxyPort => $s_port, ConnectAddr => $h_host, ConnectPort => $h_port, Username => 'root', Password => '123',
 	AuthType => 'userpass'
-);
-my $error = int($!); # save it immediately after fail
+) or my $error = int($!); # save it _immediately_ after fail
 ok(!defined($sock), 'Socks 5 connect with auth and incorrect password');
 ok($error == ESOCKSPROTO, '$! == ESOCKSPROTO') or diag $error, "!=", ESOCKSPROTO;
 ok($SOCKS_ERROR == IO::Socket::Socks::AUTHREPLY_FAILURE, '$SOCKS_ERROR == AUTHREPLY_FAILURE')
