@@ -119,7 +119,7 @@ if (defined $sock) {
 	until ($sock->ready) {
 		$i++;
 		$time_spent = time()-$start;
-		ok($time_spent < 2, "Connection attempt $i not blocked") or diag "$time_spent sec spent";
+		ok($time_spent < 1, "Connection attempt $i not blocked") or diag "$time_spent sec spent";
 		if ($SOCKS_ERROR == SOCKS_WANT_READ) {
 			$sel->can_read(0.8);
 		}
