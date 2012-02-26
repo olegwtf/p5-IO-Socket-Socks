@@ -120,7 +120,6 @@ if (defined $sock) {
 		$i++;
 		$time_spent = time()-$start;
 		ok($time_spent < 2, "Connection attempt $i not blocked") or diag "$time_spent sec spent";
-		$start = time();
 		if ($SOCKS_ERROR == SOCKS_WANT_READ) {
 			$sel->can_read(0.8);
 		}
@@ -130,6 +129,7 @@ if (defined $sock) {
 		else {
 			last;
 		}
+		$start = time();
 	}
 	
 	ok(!$sock->ready, 'Socks 5 non-blocking connect with fail auth');
