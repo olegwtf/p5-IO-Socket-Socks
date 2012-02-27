@@ -1,3 +1,11 @@
+0.62
+====
+  - Some tests didn't work without internet connection because of the resolving on client side. Fixed
+  - New socket after server accept didn't inherit SocksResolve parameter. Fixed
+  - Removed automatically resolving hostname to ip in socks4a server accept. This should be done in the program, not in this library
+  - command() on the server side now in addition returns address type as last value (ADDR_DOMAINNAME or ADDR_IPV4)
+  - Fix for $! test on Solaris and ready() time measurement on OpenBSD
+
 0.61
 ====
   - Set $! to ESOCKPROTO (new module constant) on error in the protocol

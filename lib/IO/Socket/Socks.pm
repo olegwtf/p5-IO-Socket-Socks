@@ -71,7 +71,7 @@ use constant
 %EXPORT_TAGS = (constants => ['SOCKS_WANT_READ', 'SOCKS_WANT_WRITE', @EXPORT_OK]);
 $SOCKS_ERROR = new IO::Socket::Socks::Error;
 
-$VERSION = '0.62_3';
+$VERSION = '0.62';
 $SOCKS5_RESOLVE = 1;
 $SOCKS4_RESOLVE = 0;
 $SOCKS_DEBUG = $ENV{SOCKS_DEBUG};
@@ -2126,7 +2126,7 @@ IO::Socket::Socks - Provides a way to create socks client or server both 4 and 5
 
 =head2 Server
 
-  use IO::Socket::Socks;
+  use IO::Socket::Socks ':constants';
   
   my $socks_server = new IO::Socket::Socks(ProxyAddr=>"localhost",
                                            ProxyPort=>"8000",
@@ -2150,10 +2150,10 @@ IO::Socket::Socks - Provides a way to create socks client or server both 4 and 5
           }
 
           my $command = $client->command();
-          if ($command->[0] == 1)  # CONNECT
+          if ($command->[0] == CMD_CONNECT)
           {
               # Handle the CONNECT
-              $client->command_reply(0, addr, port);
+              $client->command_reply(REPLY_SUCCESS, addr, port);
           }
         
           ...
