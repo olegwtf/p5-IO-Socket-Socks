@@ -228,7 +228,17 @@ sub configure
         $args->{Type} = SOCK_DGRAM;
     }
 
-    $self->SUPER::configure($args);
+    $SOCKS_ERROR->set();
+    unless($self->SUPER::configure($args))
+    {
+        if($SOCKS_ERROR == undef)
+        {
+            $SOCKS_ERROR->set($!, $@);
+        }
+        return;
+    }
+    
+    return $self;
 }
 
 ###############################################################################
