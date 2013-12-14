@@ -1759,12 +1759,14 @@ sub recv
 #+-----------------------------------------------------------------------------
 ###############################################################################
 sub _socks_send
-{ # this sub may cause SIGPIPE if you'll not alternate it call with _socks_read()
+{
     my $self = shift;
     my $data = shift;
     my $numb = shift;
     
+    local $SIG{PIPE} = 'IGNORE';
     $SOCKS_ERROR->set();
+    
     my $rc;
     my $writed = 0;
     my $blocking = ${*$self}{io_socket_timeout} ? $self->blocking(0) : $self->blocking;
