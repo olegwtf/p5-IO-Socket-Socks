@@ -69,7 +69,7 @@ use constant
     REQUEST_REJECTED_USERID
 );
 %EXPORT_TAGS = (constants => ['SOCKS_WANT_READ', 'SOCKS_WANT_WRITE', @EXPORT_OK]);
-$SOCKS_ERROR = new IO::Socket::Socks::Error;
+tie $SOCKS_ERROR, 'IO::Socket::Socks::ReadOnlyVar', IO::Socket::Socks::Error->new();
 
 $VERSION = '0.62';
 $SOCKS5_RESOLVE = 1;
@@ -1984,7 +1984,6 @@ sub _fail
 
 package IO::Socket::Socks::Error;
 
-use strict;
 use overload
     '==' => \&num_eq,
     '!=' => sub { !num_eq(@_) },
@@ -2033,6 +2032,28 @@ sub num_eq
     }
     return $self->{num} == int($num);
 }
+
+###############################################################################
+#+-----------------------------------------------------------------------------
+#| Helper Package to prevent modifications of $SOCKS_ERROR outside this package
+#+-----------------------------------------------------------------------------
+###############################################################################
+
+package IO::Socket::Socks::ReadOnlyVar;
+
+sub TIESCALAR
+{
+    my ($class, $value) = @_;
+    bless \$value, $class;
+}
+
+sub FETCH
+{
+    my $self = shift;
+    return $$self;
+}
+
+*STORE = *UNTIE = sub { Carp::croak 'Modification of readonly value attempted' };
 
 ###############################################################################
 #+-----------------------------------------------------------------------------
