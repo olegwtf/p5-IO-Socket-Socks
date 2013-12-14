@@ -168,7 +168,7 @@ sub new_from_fd
     ${*$sock}{'io_socket_timeout'} = delete $arg{Timeout};
     
     scalar(%arg) or return $sock;
-    if ($sock = $sock->configure(\%arg) and !$blocking) {
+    if ($sock = $sock->configure(\%arg) and !defined $arg{Blocking} and !$blocking) {
         $sock->blocking(0);
     }
     
