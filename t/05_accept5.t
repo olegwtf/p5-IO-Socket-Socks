@@ -74,7 +74,7 @@ do {
 			$write_select->add($client);
 		}
 		else {
-			ok(0, "Socks 5 no error") or diag $SOCKS_ERROR;
+			fail("Socks 5 no error"); diag $SOCKS_ERROR;
 		}
 	}
 	
