@@ -253,7 +253,9 @@ sub _configure
     
     ${*$self}->{SOCKS}->{Version} =
         (exists($args->{SocksVersion}) ?
-          ($args->{SocksVersion} == 4 || $args->{SocksVersion} == 5 ?
+          ($args->{SocksVersion} == 4 || $args->{SocksVersion} == 5 || 
+           (exists $args->{Listen} && ref $args->{SocksVersion} eq 'ARRAY' && 
+             _validate_multi_version($args->{SocksVersion})) ?
             delete($args->{SocksVersion}) :
             croak("Unsupported socks version specified. Should be 4 or 5")
           ) :
@@ -346,6 +348,25 @@ sub _configure
     }
     
     return 1;
+}
+
+sub _validate_multi_version
+{
+    my $multi_ver = shift;
+    
+    if (@$multi_ver == 1)
+    {
+        return $multi_ver->[0] == 4 || $multi_ver->[0] == 5;
+    }
+    
+    if (@$multi_ver == 2)
+    {
+        return $multi_ver->[0] != $multi_ver->[1] &&
+               ($multi_ver->[0] == 4 || $multi_ver->[0] == 5) &&
+               ($multi_ver->[1] == 4 || $multi_ver->[1] == 5);
+    }
+    
+    return;
 }
 
 
@@ -954,16 +975,28 @@ sub accept
             return;
         }
         
+        my $ver = ref ${*$self}->{SOCKS}->{Version} ?
+            @{${*$self}->{SOCKS}->{Version}} > 1 ?
+                ${*$self}->{SOCKS}->{Version}    :
+                ${*$self}->{SOCKS}->{Version}->[0]  :
+            ${*$self}->{SOCKS}->{Version};
+        
         # inherit some socket parameters
         ${*$client}->{SOCKS}->{Debug}       = ${*$self}->{SOCKS}->{Debug};
-        ${*$client}->{SOCKS}->{Version}     = ${*$self}->{SOCKS}->{Version};
+        ${*$client}->{SOCKS}->{Version}     = $ver;
         ${*$client}->{SOCKS}->{AuthMethods} = ${*$self}->{SOCKS}->{AuthMethods};
         ${*$client}->{SOCKS}->{UserAuth}    = ${*$self}->{SOCKS}->{UserAuth};
         ${*$client}->{SOCKS}->{Resolve}     = ${*$self}->{SOCKS}->{Resolve};
         ${*$client}->{SOCKS}->{ready} = 0;
         $client->blocking($self->blocking); # temporarily
         
-        if(${*$self}->{SOCKS}->{Version} == 4)
+        if (ref $ver)
+        {
+            ${*$client}->{SOCKS}->{queue} = [
+                ['_socks_accept', [], undef, [], 0]
+            ];
+        }
+        elsif($ver == 4)
         {
             ${*$client}->{SOCKS}->{queue} = [
                 ['_socks4_accept_command', [], undef, [], 0]
@@ -1004,6 +1037,43 @@ sub accept
     }
 }
 
+###############################################################################
+#
+# _socks_accept - Wait for an opening handsake, with any version
+#
+###############################################################################
+sub _socks_accept
+{
+    my $self = shift;
+    
+    my $request;
+    $request = $self->_socks_read(1, 0)
+        or return _fail($request);
+    
+    my $ver = unpack('C', $request);
+    if ($ver == 4)
+    {
+        ${*$self}->{SOCKS}->{Version} = 4;
+        push @{${*$self}->{SOCKS}->{queue}},
+            ['_socks4_accept_command', [$ver], undef, [], 0];
+    }
+    elsif ($ver == 5)
+    {
+        ${*$self}->{SOCKS}->{Version} = 5;
+        push @{${*$self}->{SOCKS}->{queue}},
+            ['_socks5_accept', [$ver], undef, [], 0],
+            ['_socks5_accept_if_auth', [], undef, [], 0],
+            ['_socks5_accept_command', [], undef, [], 0];
+    }
+    else
+    {
+        $! = ESOCKSPROTO;
+        $SOCKS_ERROR->set(ISS_BAD_VERSION, $@ = "Socks version should be 4 or 5, $ver recieved");
+        return;
+    }
+    
+    1;
+}
 
 ###############################################################################
 #
@@ -1012,7 +1082,7 @@ sub accept
 ###############################################################################
 sub _socks5_accept
 {
-    my $self = shift;
+    my ($self, $ver) = @_;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
     my ($reads, $sends, $debugs) = (0, 0, 0);
 
@@ -1026,10 +1096,15 @@ sub _socks5_accept
     # +----+----------+----------+
     
     my $request;
-    $request = $self->_socks_read(2, ++$reads)
+    $request = $self->_socks_read($ver ? 1 : 2, ++$reads)
         or return _fail($request);
     
-    my ($ver, $nmethods) = unpack('CC', $request);
+    unless ($ver)
+    {
+        $ver = unpack('C', $request);
+    }
+    my $nmethods = unpack('C', substr($request, -1, 1));
+    
     $request = $self->_socks_read($nmethods, ++$reads)
         or return _fail($request);
     
@@ -1362,7 +1437,7 @@ sub _socks5_accept_command_reply
 ###############################################################################
 sub _socks4_accept_command
 {
-    my $self = shift;
+    my ($self, $ver) = @_;
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
     my $resolve = defined(${*$self}->{SOCKS}->{Resolve}) ? ${*$self}->{SOCKS}->{Resolve} : $SOCKS4_RESOLVE;
     my ($reads, $sends, $debugs) = (0, 0, 0);
@@ -1379,11 +1454,17 @@ sub _socks4_accept_command
     # +-----+-----+----------+---------------+----------+------+        
     
     my $request;
-    $request = $self->_socks_read(8, ++$reads)
+    $request = $self->_socks_read($ver ? 7 : 8, ++$reads)
         or return _fail($request);
     
-    my ($ver, $cmd, $dstport) = unpack('CCn', $request);
-    substr($request, 0, 4) = '';
+    unless ($ver)
+    {
+        $ver = unpack('C', $request);
+        substr($request, 0, 1) = '';
+    }
+    
+    my ($cmd, $dstport) = unpack('Cn', $request);
+    substr($request, 0, 3) = '';
     my $dstaddr = length($request) == 4 ? inet_ntoa($request) : undef;
     
     my $userid = '';
