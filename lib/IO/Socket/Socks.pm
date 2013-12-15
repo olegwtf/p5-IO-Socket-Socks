@@ -71,7 +71,7 @@ use constant
 %EXPORT_TAGS = (constants => ['SOCKS_WANT_READ', 'SOCKS_WANT_WRITE', @EXPORT_OK]);
 tie $SOCKS_ERROR, 'IO::Socket::Socks::ReadOnlyVar', IO::Socket::Socks::Error->new();
 
-$VERSION = '0.62';
+$VERSION = '0.63_1';
 $SOCKS5_RESOLVE = 1;
 $SOCKS4_RESOLVE = 0;
 $SOCKS_DEBUG = $ENV{SOCKS_DEBUG};
@@ -2388,6 +2388,11 @@ The following options should be specified:
 Other options are facultative.
 
 =head3
+version( )
+
+Returns socks version for this socket
+
+=head3
 ready( )
 
 Returns true when socket becomes ready to transfer data (socks handshake done),
@@ -2475,7 +2480,7 @@ Creates a new IO::Socket::Socks server object. new_from_socket() is the same as
 new(), but allows one to create object from an existing socket (new_from_fd is new_from_socket alias).
 Both takes the following config hash:
 
-  SocksVersion => 4 for socks v4, 5 for socks v5. Default is 5
+  SocksVersion => 4 for socks4, 5 for socks5 or [4,5] if you want accept both 4 and 5. Default is 5
   
   Timeout => Timeout value for various operations
   
@@ -2523,6 +2528,13 @@ Accept an incoming connection and return a new IO::Socket::Socks
 object that represents that connection.  You must call command()
 on this to find out what the incoming connection wants you to do,
 and then call command_reply() to send back the reply.
+
+=head3 version( )
+
+Returns socks version for socket. It is useful when your server
+accepts both 4 and 5 version. Then you should know socks version
+to make proper response. Just call C<version()> on socket received
+after C<accept()>.
 
 =head3 ready( )
 

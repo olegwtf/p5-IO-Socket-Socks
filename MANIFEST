@@ -3,6 +3,7 @@ examples/bind.pl
 examples/chain.pl
 examples/client4.pl
 examples/client5.pl
+examples/multi-client-multi-ver-coro-based-server.pl
 examples/server4.pl
 examples/server5.pl
 examples/udp.pl
@@ -11,12 +12,15 @@ LICENSE.LGPL
 Makefile.PL
 MANIFEST			This list of files
 MANIFEST.SKIP
+MYMETA.json
+MYMETA.yml
 README
-t/1_load.t
-t/2_new.t
-t/3_conect.t
-t/4_accept4.t
-t/5_accept5.t
-t/6_accept_nb4.t
-t/7_accept_nb5.t
+t/01_load.t
+t/02_new.t
+t/03_connect.t
+t/04_accept4.t
+t/05_accept5.t
+t/06_accept_mixed.t
+t/07_accept_nb4.t
+t/08_accept_nb5.t
 t/subs.pm
