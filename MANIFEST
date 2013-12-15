@@ -8,12 +8,9 @@ examples/server4.pl
 examples/server5.pl
 examples/udp.pl
 lib/IO/Socket/Socks.pm
-LICENSE.LGPL
 Makefile.PL
 MANIFEST			This list of files
 MANIFEST.SKIP
-MYMETA.json
-MYMETA.yml
 README
 t/01_load.t
 t/02_new.t
