@@ -163,16 +163,11 @@ sub new_from_fd
     
     bless $sock, $class;
     
-    my $blocking = $sock->blocking;
     $sock->autoflush(1);
     ${*$sock}{'io_socket_timeout'} = delete $arg{Timeout};
     
     scalar(%arg) or return $sock;
-    if ($sock = $sock->configure(\%arg) and !defined $arg{Blocking} and !$blocking) {
-        $sock->blocking(0);
-    }
-    
-    return $sock;
+    return $sock->configure(\%arg);
 }
 
 *new_from_socket = \&new_from_fd;
