@@ -177,7 +177,6 @@ sub new_from_fd
 
 *new_from_socket = \&new_from_fd;
 
-
 ###############################################################################
 #
 # socket - override parent socket() to prevent recreation of already created socket
