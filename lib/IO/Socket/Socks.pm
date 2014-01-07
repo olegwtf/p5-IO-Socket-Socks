@@ -177,6 +177,26 @@ sub new_from_fd
 
 *new_from_socket = \&new_from_fd;
 
+
+###############################################################################
+#
+# socket - override parent socket() to prevent recreation of already created socket
+#          this is useful for new_from_fd/new_from_socket
+###############################################################################
+sub socket
+{
+    my $self = shift;
+    
+    if (-S $self) {
+        ${*$self}{'io_socket_domain'} ||= $_[0];
+        ${*$self}{'io_socket_type'}   ||= $_[1];
+        ${*$self}{'io_socket_proto'}  ||= $_[2];
+        return $self;
+    }
+    
+    return $self->SUPER::socket(@_);
+}
+
 ###############################################################################
 #
 # configure - read in the config hash and populate the object.
