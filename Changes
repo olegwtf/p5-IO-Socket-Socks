@@ -1,3 +1,11 @@
+0.63
+====
+   - Ignore SIGPIPE on write
+   - $SOCKS_ERROR is readonly now
+   - Ability to make server which understands both 4 and 5 version on the same port
+   - version() method added
+   - Prevent recreation of the passed socket by new_from_fd/new_from_socket
+
 0.62
 ====
   - Some tests didn't work without internet connection because of the resolving on client side. Fixed
