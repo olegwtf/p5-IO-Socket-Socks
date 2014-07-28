@@ -1,6 +1,7 @@
 #!/usr/bin/env perl
 
 use Test::More;
+use Socket;
 use IO::Socket::Socks;
 use IO::Select;
 use Time::HiRes 'time';
@@ -137,6 +138,25 @@ if (defined $sock) {
 else {
 	pass('Socks 5 non-blocking connect with fail auth (immediatly)');
 }
+
+kill 15, $s_pid;
+($s_pid, $s_host, $s_port) = make_socks_server(5);
+
+socket(my $unconnected_sock, PF_INET, SOCK_STREAM, getprotobyname('tcp'))  || die "socket: $!";
+$sock = IO::Socket::Socks->new_from_socket($unconnected_sock, ProxyAddr => $s_host, ProxyPort => $s_port, ConnectAddr => $h_host, ConnectPort => $h_port);
+ok($unconnected_sock, "plain socket still alive");
+ok($sock, "socks object created from plain socket");
+is(fileno($sock), fileno($unconnected_sock), "socks object uses plain socket");
+
+$sock = IO::Socket::INET->new("$s_host:$s_port");
+ok($sock, "IO::Socket::INET socket created");
+$sock = IO::Socket::Socks->start_SOCKS($sock, ConnectAddr => $h_host, ConnectPort => $h_port);
+ok($sock, "IO::Socket::INET socket upgraded to IO::Socket::Socks");
+isa_ok($sock, 'IO::Socket::Socks');
+$sock->syswrite(
+	"GET / HTTP/1.1\015\012\015\012"
+);
+is($sock->getline(), "HTTP/1.1 200 OK\015\012", 'socket works properly');
 
 kill 15, $s_pid;
 kill 15, $h_pid;

@@ -136,6 +136,11 @@ use constant
 #------------------------------------------------------------------------------
 # sub new is handled by IO::Socket::INET
 #------------------------------------------------------------------------------
+###############################################################################
+#
+# new_from_fd/new_from_socket - create IO::Socket::Socks object from existing
+# non-connected socket
+###############################################################################
 sub new_from_fd
 {
     my ($class, $sock, %arg) = @_;
@@ -143,13 +148,35 @@ sub new_from_fd
     bless $sock, $class;
     
     $sock->autoflush(1);
-    ${*$sock}{'io_socket_timeout'} = delete $arg{Timeout};
+    if (exists $arg{Timeout}) {
+        ${*$sock}{'io_socket_timeout'} = delete $arg{Timeout};
+    }
     
     scalar(%arg) or return $sock;
     return $sock->configure(\%arg);
 }
 
 *new_from_socket = \&new_from_fd;
+
+###############################################################################
+#
+# start_SOCKS - start socks handshake on already connected socket
+###############################################################################
+sub start_SOCKS
+{
+    my ($class, $sock, %arg) = @_;
+    
+    bless $sock, $class;
+    
+    $sock->autoflush(1);
+    if (exists $arg{Timeout}) {
+        ${*$sock}{'io_socket_timeout'} = delete $arg{Timeout};
+    }
+    
+    ${*$sock}->{SOCKS} = {RequireAuth => 0};
+    
+    return $sock->command(%arg) ? $sock : undef;
+}
 
 ###############################################################################
 #
@@ -2317,7 +2344,9 @@ subdirectory in the distribution.
 =head3 new_from_fd($socket, %cfg)
 
 Creates a new IO::Socket::Socks client object.  new_from_socket() is the same as
-new(), but allows one to create object from an existing socket (new_from_fd is new_from_socket alias).
+new(), but allows one to create object from an existing and not connected
+(to make IO::Socket::Socks object from connected socket see "start_SOCKS")
+socket (new_from_fd is new_from_socket alias).
 Both takes the following config hash:
 
   SocksVersion => 4 or 5. Default is 5
@@ -2379,6 +2408,38 @@ The following options should be specified:
   ConnectAddr and ConnectPort or BindAddr and BindPort or UdpAddr and UdpPort
 
 Other options are facultative.
+
+=head3
+start_SOCKS($socket, %cfg)
+
+This is a class method to start socks handshake on already connected socket. This
+will bless passed $socket to IO::Socket::Socks class. %cfg is like hash in the constructor.
+Only options listed below makes sence:
+
+  Timeout
+  ConnectAddr
+  ConnectPort
+  BindAddr
+  BindPort
+  UdpAddr
+  UdpPort
+  SocksVersion
+  SocksDebug
+  SocksResolve
+  AuthType
+  RequireAuth
+  Username
+  Password
+  AuthMethods
+
+On success this method will return same $socket, but as IO::Socket::Socks object. On failure it will
+return undef (but socket will be still blessed to IO::Socket::Socks class). See example:
+
+  use IO::Socket;
+  use IO::Socket::Socks;
+  
+  my $sock = IO::Socket::INET->new("$proxy_host:$proxy_port") or die $@;
+  $sock = IO::Socket::Socks->start_SOCKS($sock, ConnectAddr => "google.com", ConnectPort => 80) or die $@;
 
 =head3
 version( )
