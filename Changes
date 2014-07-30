@@ -1,3 +1,7 @@
+0.64
+====
+   - start_SOCKS() method added
+
 0.63
 ====
    - Ignore SIGPIPE on write
