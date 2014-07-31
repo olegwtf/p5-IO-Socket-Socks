@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 
 use Test::More;
-use IO::Socket::Socks;
+use IO::Socket::Socks qw(:DEFAULT :constants);
 use IO::Select;
 use strict;
 
@@ -36,19 +36,7 @@ while ($accepted != 10 && $i < 30) {
 
 is(scalar keys %server_clients, 10, "All socks 5 clients accepted");
 $read_select->remove($server);
-my $write_select = IO::Select->new(values %local_clients);
-$i = 0;
-
-while ($write_select->count() && $i<30) {
-	$i++;
-	if (my @ready = $write_select->can_write(0.5)) {
-		for my $client (@ready) {
-			$write_select->remove($client);
-		}
-	}
-}
-
-is($write_select->count(), 0, "All clients connected");
+my $write_select = IO::Select->new();
 $i = 0;
 
 do {
@@ -76,6 +64,7 @@ do {
 				delete $local_clients{$client};
 			}
 			else {
+				$client->command_reply(REPLY_SUCCESS, '127.0.0.1', '1080');
 				delete $server_clients{$client};
 			}
 		}
