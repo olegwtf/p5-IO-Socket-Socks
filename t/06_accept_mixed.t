@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 
 use Test::More;
-use IO::Socket::Socks;
+use IO::Socket::Socks qw(:DEFAULT :constants);
 use IO::Select;
 use strict;
 
@@ -68,7 +68,14 @@ do {
                 delete $local_clients{$client};
             }
             else {
-                $client->version == 4 ? $ver4_cnt-- : $ver5_cnt--;
+                if ($client->version == 4) {
+					$client->command_reply(REQUEST_GRANTED, '127.0.0.1', '1080');
+					$ver4_cnt--;
+				}
+				else {
+					$client->command_reply(REPLY_SUCCESS, '127.0.0.1', '1080');
+					$ver5_cnt--;
+				}
                 delete $server_clients{$client};
             }
         }
