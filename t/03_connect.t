@@ -47,7 +47,7 @@ ok($SOCKS_ERROR == IO::Socket::Socks::AUTHREPLY_FAILURE, '$SOCKS_ERROR == AUTHRE
 kill 15, $s_pid;
 
 SKIP: {
-	skip "SOCKS_SLOW_TESTS environment variable should has true value", 1 unless $ENV{SOCKS_SLOW_TESTS};
+	skip "SOCKS_SLOW_TESTS environment variable should has true value", 1 unless $ENV{SOCKS_SLOW_TESTS} || $ENV{AUTOMATED_TESTING};
 	
 	($s_pid, $s_host, $s_port) = make_socks_server(4, undef, undef, accept => 3, reply => 2);
 	my $start = time();

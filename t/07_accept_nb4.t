@@ -75,7 +75,7 @@ use strict;
 
 use constant CONN_CNT => 3;
 
-unless ($ENV{SOCKS_SLOW_TESTS}) {
+unless ($ENV{SOCKS_SLOW_TESTS} || $ENV{AUTOMATED_TESTING}) {
 	plan skip_all => "SOCKS_SLOW_TESTS environment variable should has true value";
 }
 
