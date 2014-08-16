@@ -1,3 +1,9 @@
+0.65
+====
+   - Fix tests failures on OS X (#rt97619)
+   - Clean up documentation a little bit
+   - Do not run slow tests if environment variable SOCKS_SLOW_TESTS is not true
+
 0.64
 ====
    - start_SOCKS() method added
