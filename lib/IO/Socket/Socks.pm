@@ -2281,35 +2281,29 @@ IO::Socket::Socks - Provides a way to create socks client or server both 4 and 5
                                            RequireAuth=>1
                                           );
 
-  my $select = new IO::Select($socks_server);
-         
   while(1)
   {
-      if ($select->can_read())
+      my $client = $socks_server->accept();
+
+      if (!defined($client))
       {
-          my $client = $socks_server->accept();
-
-          if (!defined($client))
-          {
-              print "ERROR: $SOCKS_ERROR\n";
-              next;
-          }
-
-          my $command = $client->command();
-          if ($command->[0] == CMD_CONNECT)
-          {
-              # Handle the CONNECT
-              $client->command_reply(REPLY_SUCCESS, addr, port);
-          }
-        
-          ...
-          #read from the client and send to the CONNECT address
-          ...
-
-          $client->close();
+          print "ERROR: $SOCKS_ERROR\n";
+          next;
       }
-  }
+
+      my $command = $client->command();
+      if ($command->[0] == CMD_CONNECT)
+      {
+         # Handle the CONNECT
+         $client->command_reply(REPLY_SUCCESS, addr, port);
+      }
         
+      ...
+      #read from the client and send to the CONNECT address
+      ...
+      
+      $client->close();
+  }
   
   sub auth
   {
@@ -2344,9 +2338,10 @@ subdirectory in the distribution.
 =head3 new_from_fd($socket, %cfg)
 
 Creates a new IO::Socket::Socks client object.  new_from_socket() is the same as
-new(), but allows one to create object from an existing and not connected
-(to make IO::Socket::Socks object from connected socket see "start_SOCKS")
-socket (new_from_fd is new_from_socket alias).
+new(), but allows one to create object from an existing and not connected socket 
+(new_from_fd is new_from_socket alias). To make IO::Socket::Socks object from
+connected socket see "start_SOCKS"
+
 Both takes the following config hash:
 
   SocksVersion => 4 or 5. Default is 5
@@ -2404,8 +2399,8 @@ Both takes the following config hash:
 
 The following options should be specified:
 
-  ProxyAddr and ProxyPort
-  ConnectAddr and ConnectPort or BindAddr and BindPort or UdpAddr and UdpPort
+  (ProxyAddr and ProxyPort)
+  (ConnectAddr and ConnectPort) or (BindAddr and BindPort) or (UdpAddr and UdpPort)
 
 Other options are facultative.
 
@@ -2439,7 +2434,7 @@ return undef (but socket will be still blessed to IO::Socket::Socks class). See 
   use IO::Socket::Socks;
   
   my $sock = IO::Socket::INET->new("$proxy_host:$proxy_port") or die $@;
-  $sock = IO::Socket::Socks->start_SOCKS($sock, ConnectAddr => "google.com", ConnectPort => 80) or die $@;
+  $sock = IO::Socket::Socks->start_SOCKS($sock, ConnectAddr => "google.com", ConnectPort => 80) or die $SOCKS_ERROR;
 
 =head3
 version( )
