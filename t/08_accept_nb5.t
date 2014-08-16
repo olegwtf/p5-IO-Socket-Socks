@@ -89,6 +89,10 @@ use strict;
 
 use constant CONN_CNT => 3;
 
+unless ($ENV{SOCKS_SLOW_TESTS}) {
+	plan skip_all => "SOCKS_SLOW_TESTS environment variable should has true value";
+}
+
 if( $^O eq 'MSWin32' ) {
 	plan skip_all => 'Fork and Windows are incompatible';
 }

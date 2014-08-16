@@ -45,75 +45,54 @@ ok($SOCKS_ERROR == IO::Socket::Socks::AUTHREPLY_FAILURE, '$SOCKS_ERROR == AUTHRE
     or diag int($SOCKS_ERROR), "!=", IO::Socket::Socks::AUTHREPLY_FAILURE;
 
 kill 15, $s_pid;
-($s_pid, $s_host, $s_port) = make_socks_server(4, undef, undef, accept => 3, reply => 2);
-my $start = time();
-$sock = IO::Socket::Socks->new(
-	SocksVersion => 4, ProxyAddr => $s_host, ProxyPort => $s_port, ConnectAddr => $h_host, ConnectPort => $h_port
-);
-ok(defined($sock), 'Socks 4 blocking connect success');
 
-$start = time();
-$sock = IO::Socket::Socks->new(
-	SocksVersion => 4, ProxyAddr => $s_host, ProxyPort => $s_port, ConnectAddr => $h_host, ConnectPort => $h_port, Blocking => 0
-);
-ok(defined($sock), 'Socks 4 non-blocking connect success');
-my $time_spent = time()-$start;
-ok($time_spent < 3, 'Socks 4 non-blocking connect time') or diag "$time_spent sec spent";
-my $sel = IO::Select->new($sock);
-my $i = 0;
-$start = time();
-until ($sock->ready) {
-	$i++;
-	$time_spent = time()-$start;
-	ok($time_spent < 1, "Connection attempt $i not blocked") or diag "$time_spent sec spent";
-	if ($SOCKS_ERROR == SOCKS_WANT_READ) {
-		$sel->can_read(0.8);
-	}
-	elsif ($SOCKS_ERROR == SOCKS_WANT_WRITE) {
-		$sel->can_write(0.8);
-	}
-	else {
-		last;
-	}
+SKIP: {
+	skip "SOCKS_SLOW_TESTS environment variable should has true value", 1 unless $ENV{SOCKS_SLOW_TESTS};
+	
+	($s_pid, $s_host, $s_port) = make_socks_server(4, undef, undef, accept => 3, reply => 2);
+	my $start = time();
+	$sock = IO::Socket::Socks->new(
+		SocksVersion => 4, ProxyAddr => $s_host, ProxyPort => $s_port, ConnectAddr => $h_host, ConnectPort => $h_port
+	);
+	ok(defined($sock), 'Socks 4 blocking connect success');
+	
 	$start = time();
-}
-ok($sock->ready, 'Socks 4 non-blocking socket ready') or diag $SOCKS_ERROR;
-
-kill 15, $s_pid;
-($s_pid, $s_host, $s_port) = make_socks_server(5, 'root', 'toor', accept => 3, reply => 2);
-$start = time();
-$sock = IO::Socket::Socks->new(
-	SocksVersion => 5, ProxyAddr => $s_host, ProxyPort => $s_port, ConnectAddr => $h_host, ConnectPort => $h_port, Username => 'root', Password => 'toor',
-	AuthType => 'userpass', Blocking => 0
-);
-ok(defined($sock), 'Socks 5 non-blocking connect success');
-$time_spent = time()-$start;
-ok($time_spent < 3, 'Socks 5 non-blocking connect time') or diag "$time_spent sec spent";
-$sel = IO::Select->new($sock);
-$i = 0;
-$start = time();
-until ($sock->ready) {
-	$i++;
-	$time_spent = time()-$start;
-	ok($time_spent < 1, "Connection attempt $i not blocked") or diag "$time_spent sec spent";
-	if ($SOCKS_ERROR == SOCKS_WANT_READ) {
-		$sel->can_read(0.8);
-	}
-	elsif ($SOCKS_ERROR == SOCKS_WANT_WRITE) {
-		$sel->can_write(0.8);
-	}
-	else {
-		last;
-	}
+	$sock = IO::Socket::Socks->new(
+		SocksVersion => 4, ProxyAddr => $s_host, ProxyPort => $s_port, ConnectAddr => $h_host, ConnectPort => $h_port, Blocking => 0
+	);
+	ok(defined($sock), 'Socks 4 non-blocking connect success');
+	my $time_spent = time()-$start;
+	ok($time_spent < 3, 'Socks 4 non-blocking connect time') or diag "$time_spent sec spent";
+	my $sel = IO::Select->new($sock);
+	my $i = 0;
 	$start = time();
-}
-ok($sock->ready, 'Socks 5 non-blocking socket ready') or diag $SOCKS_ERROR;
+	until ($sock->ready) {
+		$i++;
+		$time_spent = time()-$start;
+		ok($time_spent < 1, "Connection attempt $i not blocked") or diag "$time_spent sec spent";
+		if ($SOCKS_ERROR == SOCKS_WANT_READ) {
+			$sel->can_read(0.8);
+		}
+		elsif ($SOCKS_ERROR == SOCKS_WANT_WRITE) {
+			$sel->can_write(0.8);
+		}
+		else {
+			last;
+		}
+		$start = time();
+	}
+	ok($sock->ready, 'Socks 4 non-blocking socket ready') or diag $SOCKS_ERROR;
 
-$sock = IO::Socket::Socks->new(
-	SocksVersion => 5, ProxyAddr => $s_host, ProxyPort => $s_port, ConnectAddr => $h_host, ConnectPort => $h_port, Username => 'root', Password => 'toot',
-	AuthType => 'userpass', Blocking => 0
-);
-if (defined $sock) {
+	kill 15, $s_pid;
+	($s_pid, $s_host, $s_port) = make_socks_server(5, 'root', 'toor', accept => 3, reply => 2);
+	$start = time();
+	$sock = IO::Socket::Socks->new(
+		SocksVersion => 5, ProxyAddr => $s_host, ProxyPort => $s_port, ConnectAddr => $h_host, ConnectPort => $h_port, Username => 'root', Password => 'toor',
+		AuthType => 'userpass', Blocking => 0
+	);
+	ok(defined($sock), 'Socks 5 non-blocking connect success');
+	$time_spent = time()-$start;
+	ok($time_spent < 3, 'Socks 5 non-blocking connect time') or diag "$time_spent sec spent";
 	$sel = IO::Select->new($sock);
 	$i = 0;
 	$start = time();
@@ -132,14 +111,41 @@ if (defined $sock) {
 		}
 		$start = time();
 	}
-	
-	ok(!$sock->ready, 'Socks 5 non-blocking connect with fail auth');
-}
-else {
-	pass('Socks 5 non-blocking connect with fail auth (immediatly)');
+	ok($sock->ready, 'Socks 5 non-blocking socket ready') or diag $SOCKS_ERROR;
+
+	$sock = IO::Socket::Socks->new(
+		SocksVersion => 5, ProxyAddr => $s_host, ProxyPort => $s_port, ConnectAddr => $h_host, ConnectPort => $h_port, Username => 'root', Password => 'toot',
+		AuthType => 'userpass', Blocking => 0
+	);
+	if (defined $sock) {
+		$sel = IO::Select->new($sock);
+		$i = 0;
+		$start = time();
+		until ($sock->ready) {
+			$i++;
+			$time_spent = time()-$start;
+			ok($time_spent < 1, "Connection attempt $i not blocked") or diag "$time_spent sec spent";
+			if ($SOCKS_ERROR == SOCKS_WANT_READ) {
+				$sel->can_read(0.8);
+			}
+			elsif ($SOCKS_ERROR == SOCKS_WANT_WRITE) {
+				$sel->can_write(0.8);
+			}
+			else {
+				last;
+			}
+			$start = time();
+		}
+		
+		ok(!$sock->ready, 'Socks 5 non-blocking connect with fail auth');
+	}
+	else {
+		pass('Socks 5 non-blocking connect with fail auth (immediatly)');
+	}
+
+	kill 15, $s_pid;
 }
 
-kill 15, $s_pid;
 ($s_pid, $s_host, $s_port) = make_socks_server(5);
 
 socket(my $unconnected_sock, PF_INET, SOCK_STREAM, getprotobyname('tcp'))  || die "socket: $!";
