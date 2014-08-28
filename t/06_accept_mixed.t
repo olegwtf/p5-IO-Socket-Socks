@@ -17,7 +17,7 @@ my $ver5_cnt = 0;
 for (1..10) {
     my $ver = rand() < 0.5 ? 4 : 5;
     $ver == 4 ? $ver4_cnt++ : $ver5_cnt++;
-    my $client = IO::Socket::Socks->new(SocksVersion => $ver, Blocking => 0, ProxyAddr => $serveraddr, ProxyPort => $serverport, ConnectAddr => '2gis.com', ConnectPort => 8080);
+    my $client = IO::Socket::Socks->new(SocksVersion => $ver, Blocking => 0, ProxyAddr => $serveraddr, ProxyPort => $serverport, ConnectAddr => '2gis.com', ConnectPort => 8080, SocksResolve => 1);
     ok(defined($client), "Socks $ver client non-blocking connection $_ started");
     $local_clients{$client} = $client;
 }
