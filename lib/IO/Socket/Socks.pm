@@ -2543,6 +2543,7 @@ Both takes the following config hash:
                   For socks v4: allow use socks4a protocol extension if
                   true and not otherwise.
                   This overrides value of $SOCKS4_RESOLVE or $SOCKS5_RESOLVE.
+                  See also command_reply().
   
   SocksDebug => This will cause all of the SOCKS traffic to
                 be presented on the command line in a form
@@ -2665,8 +2666,13 @@ is.  The REPLY CODE is one of the constants as follows (integer value):
   REPLY_CMD_NOT_SUPPORTED(7): Command Not Supported
   REPLY_ADDR_NOT_SUPPORTED(8): Address Not Supported
 
-HOST and PORT are the resulting host and port that you use for the
-command.
+HOST and PORT are the resulting host and port (where server socket responsible for this command bound).
+
+Note: for 5 version C<command_reply> will try to resolve passed address if
+C<SocksResolve> has true value and passed address is domain name. To avoid this just pass ip address
+(C<$socket-E<gt>sockhost>) instead of host name or turn off C<SocksResolve> for this server. For version 4
+passed host name will always be resolved to ip address even if C<SocksResolve> has false value. Because
+this version doesn't support C<ADDRESS> as domain name.
 
 =head1 VARIABLES
 
