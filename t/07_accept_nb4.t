@@ -100,7 +100,7 @@ for my $d (1..CONN_CNT) {
 	if ($child == 0) {
 		close $writer;
 		chomp(my $servinfo = <$reader>);
-		my ($host, $port) = split /:/, $servinfo;
+		my ($host, $port) = split /\|/, $servinfo;
 		close $reader;
 		
 		$IO::Socket::Socks::Slow::DELAY = $d;
@@ -125,7 +125,7 @@ my $server = IO::Socket::Socks->new(Blocking => 0, Listen => 10, SocksVersion =>
 my $host = $server->sockhost eq "0.0.0.0" ? "127.0.0.1" : $server->sockhost;
 my $port = $server->sockport;
 
-print $_ "$host:$port\n" for @pipes;
+print $_ "$host|$port\n" for @pipes;
 close $_ for @pipes;
 
 my $sel_read  = IO::Select->new($server);
