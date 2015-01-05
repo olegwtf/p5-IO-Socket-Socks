@@ -1,11 +1,11 @@
 package IO::Socket::Socks;
 
 use strict;
-use IO::Socket;
 use IO::Select;
+use Socket;
 use Errno qw(EWOULDBLOCK EAGAIN EINPROGRESS ETIMEDOUT ECONNABORTED);
 use Carp;
-use vars qw( @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION $SOCKS_ERROR $SOCKS5_RESOLVE $SOCKS4_RESOLVE $SOCKS_DEBUG %CODES );
+use vars qw( $SOCKET_CLASS @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION $SOCKS_ERROR $SOCKS5_RESOLVE $SOCKS4_RESOLVE $SOCKS_DEBUG %CODES );
 require Exporter;
 
 use constant
@@ -15,7 +15,21 @@ use constant
     ESOCKSPROTO => exists &Errno::EPROTO ? &Errno::EPROTO : 7000,
 };
 
-@ISA = qw(Exporter IO::Socket::INET);
+@ISA = ('Exporter');
+
+tie $SOCKET_CLASS, 'IO::Socket::Socks::SocketClassVar', $SOCKET_CLASS;
+unless ($SOCKET_CLASS)
+{
+    if (eval{require IO::Socket::IP; IO::Socket::IP->VERSION(0.35)})
+    {
+        $SOCKET_CLASS = 'IO::Socket::IP';
+    }
+    else
+    {
+        $SOCKET_CLASS = 'IO::Socket::INET';
+    }
+}
+
 @EXPORT = qw( $SOCKS_ERROR SOCKS_WANT_READ SOCKS_WANT_WRITE ESOCKSPROTO );
 @EXPORT_OK = qw(
     SOCKS5_VER
@@ -2170,6 +2184,39 @@ sub FETCH
 }
 
 *STORE = *UNTIE = sub { Carp::croak 'Modification of readonly value attempted' };
+
+###############################################################################
+#+-----------------------------------------------------------------------------
+#| Helper Package to handle assigning of $SOCKET_CLASS
+#+-----------------------------------------------------------------------------
+###############################################################################
+
+package IO::Socket::Socks::SocketClassVar;
+
+sub TIESCALAR
+{
+    my ($class, $value) = @_;
+    bless {v => $value}, $class;
+}
+
+sub FETCH
+{
+    return $_[0]->{v};
+}
+
+sub STORE
+{
+    my ($self, $class) = @_;
+    
+    $self->{v} = $class;
+    eval "use $class; 1" or die $@;
+    $IO::Socket::Socks::ISA[1] = $class;
+}
+
+sub UNTIE
+{
+    Carp::croak 'Untie of tied variable is denied';
+}
 
 ###############################################################################
 #+-----------------------------------------------------------------------------
