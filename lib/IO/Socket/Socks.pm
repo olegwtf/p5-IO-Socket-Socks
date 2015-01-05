@@ -24,6 +24,10 @@ unless ($SOCKET_CLASS)
     {
         $SOCKET_CLASS = 'IO::Socket::IP';
     }
+    elsif (eval{require IO::Socket::INET6; IO::Socket::INET6->VERSION(2.62)})
+    {
+        $SOCKET_CLASS = 'IO::Socket::INET6';
+    }
     else
     {
         $SOCKET_CLASS = 'IO::Socket::INET';
