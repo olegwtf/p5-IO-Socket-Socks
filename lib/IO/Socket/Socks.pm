@@ -8,6 +8,8 @@ use Carp;
 use vars qw( $SOCKET_CLASS @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION $SOCKS_ERROR $SOCKS5_RESOLVE $SOCKS4_RESOLVE $SOCKS_DEBUG %CODES );
 require Exporter;
 
+$VERSION = '0.66_1';
+
 use constant
 {
     SOCKS_WANT_READ  => 20,
@@ -69,7 +71,6 @@ unless ($SOCKET_CLASS)
 %EXPORT_TAGS = (constants => ['SOCKS_WANT_READ', 'SOCKS_WANT_WRITE', @EXPORT_OK]);
 tie $SOCKS_ERROR, 'IO::Socket::Socks::ReadOnlyVar', IO::Socket::Socks::Error->new();
 
-$VERSION = '0.65';
 $SOCKS5_RESOLVE = 1;
 $SOCKS4_RESOLVE = 0;
 $SOCKS_DEBUG = $ENV{SOCKS_DEBUG};
