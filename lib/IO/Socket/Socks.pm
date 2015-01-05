@@ -3,7 +3,7 @@ package IO::Socket::Socks;
 use strict;
 use IO::Socket;
 use IO::Select;
-use Errno qw(EWOULDBLOCK EAGAIN ENOTCONN ETIMEDOUT ECONNABORTED);
+use Errno qw(EWOULDBLOCK EAGAIN EINPROGRESS ETIMEDOUT ECONNABORTED);
 use Carp;
 use vars qw( @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION $SOCKS_ERROR $SOCKS5_RESOLVE $SOCKS4_RESOLVE $SOCKS_DEBUG %CODES );
 require Exporter;
@@ -425,12 +425,16 @@ sub connect
     #--------------------------------------------------------------------------
     # Establish a connection
     #--------------------------------------------------------------------------
-    my $sock = defined( ${*$self}->{SOCKS}->{TCP} ) ? 
+    my $ok = defined( ${*$self}->{SOCKS}->{TCP} ) ? 
                 ${*$self}->{SOCKS}->{TCP}->SUPER::connect(@_)
                 :
                 $self->SUPER::connect(@_);
 
-    if (!$sock)
+    if ($! == EINPROGRESS && $self->blocking == 0)
+    {
+        $SOCKS_ERROR->set(SOCKS_WANT_WRITE, 'Socks want write');
+    }
+    elsif (!$ok)
     {
         $SOCKS_ERROR->set($!, $@ = "Connection to proxy failed: $!");
         return;
@@ -448,7 +452,6 @@ sub _connect
 {
     my $self = shift;
     ${*$self}->{SOCKS}->{ready} = 0;
-    ${*$self}->{SOCKS}->{connected} = 0;
 
     if(${*$self}->{SOCKS}->{Version} == 4)
     {
@@ -476,8 +479,11 @@ sub _connect
         ];
     }
     
-    defined( $self->_run_queue() )
-        or return;
+    if ($SOCKS_ERROR == undef)
+    { # connection estabilished
+        defined( $self->_run_queue() )
+            or return;
+    }
     
     return $self;
 }
@@ -1901,8 +1907,6 @@ sub _socks_send
             $rc = $self->syswrite($data);
             if(defined $rc)
             {
-                ${*$self}->{SOCKS}->{connected} = 1 unless ${*$self}->{SOCKS}->{connected};
-                
                 if($rc > 0)
                 {
                     ${*$self}->{SOCKS}->{queue}[0][Q_BUF] += $rc;
@@ -1913,8 +1917,7 @@ sub _socks_send
                     last;
                 }
             }
-            elsif($! == EWOULDBLOCK || $! == EAGAIN || 
-                 ($! == ENOTCONN && !${*$self}->{SOCKS}->{connected}))
+            elsif($! == EWOULDBLOCK || $! == EAGAIN)
             {
                 $SOCKS_ERROR->set(SOCKS_WANT_WRITE, 'Socks want write');
                 return undef;
