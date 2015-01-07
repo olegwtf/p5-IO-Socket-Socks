@@ -6,7 +6,7 @@ use IO::Select;
 use strict;
 require 't/subs.pm';
 
-my $server = IO::Socket::Socks->new(Listen => 10, Blocking => 0, SocksVersion => 4)
+my $server = IO::Socket::Socks->new(Listen => 10, Blocking => 0, SocksVersion => 4, SocksResolve => 1)
 	or die $@;
 my $read_select = IO::Select->new($server);
 my $serveraddr = fix_addr($server->sockhost);
