@@ -451,7 +451,7 @@ sub connect
                 :
                 $self->SUPER::connect(@_);
 
-    if ($! == EINPROGRESS && $self->blocking == 0)
+    if (($! == EINPROGRESS || $! == EWOULDBLOCK || $! == EAGAIN) && $self->blocking == 0)
     {
         $SOCKS_ERROR->set(SOCKS_WANT_WRITE, 'Socks want write');
     }
