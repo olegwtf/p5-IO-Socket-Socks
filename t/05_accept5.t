@@ -4,11 +4,12 @@ use Test::More;
 use IO::Socket::Socks qw(:DEFAULT :constants);
 use IO::Select;
 use strict;
+require 't/subs.pm';
 
 my $server = IO::Socket::Socks->new(Listen => 10, Blocking => 0, SocksVersion => 5)
 	or die $@;
 my $read_select = IO::Select->new($server);
-my $serveraddr = $server->sockhost eq '0.0.0.0' ? '127.0.0.1' : $server->sockhost;
+my $serveraddr = fix_addr($server->sockhost);
 my $serverport = $server->sockport;
 
 my %local_clients;

@@ -86,7 +86,7 @@ sub make_socks_server {
 		}
 	}
 	
-	return ($child, $serv->sockhost eq "0.0.0.0" ? "127.0.0.1" : $serv->sockhost, $serv->sockport);
+	return ($child, fix_addr($serv->sockhost), $serv->sockport);
 }
 
 sub make_http_server {
@@ -145,7 +145,13 @@ sub make_http_server {
 		exit;
 	}
 	
-	return ($child, $serv->sockhost eq "0.0.0.0" ? "127.0.0.1" : $serv->sockhost, $serv->sockport);
+	return ($child, fix_addr($serv->sockhost), $serv->sockport);
+}
+
+sub fix_addr {
+	return '127.0.0.1' if $_[0] eq '0.0.0.0';
+	return '0:0:0:0:0:0:0:1' if $_[0] eq '::';
+	return $_[0];
 }
 
 1;

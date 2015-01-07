@@ -86,6 +86,7 @@ use IO::Socket::Socks;
 use IO::Select;
 use Time::HiRes;
 use strict;
+require 't/subs.pm';
 
 use constant CONN_CNT => 3;
 
@@ -137,7 +138,7 @@ for my $d (1..CONN_CNT) {
 my $server = IO::Socket::Socks->new(Blocking => 0, Listen => 10)
 	or die $@;
 
-my $host = $server->sockhost eq "0.0.0.0" ? "127.0.0.1" : $server->sockhost;
+my $host = fix_addr($server->sockhost);
 my $port = $server->sockport;
 
 print $_ "$host|$port\n" for @pipes;
