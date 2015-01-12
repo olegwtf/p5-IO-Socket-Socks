@@ -774,7 +774,7 @@ sub _socks5_connect_command
         );
         $debug->add(hlen => $hlen) if defined $hlen;
         $debug->add(
-            dstaddr => $resolve ? $dstaddr : (length($dstaddr) == 4 ? inet_ntoa($dstaddr) : Socket::inet_ntop(AF_INET6, $dstaddr)),
+            dstaddr => $resolve ? $dstaddr : _addr_ntoa($dstaddr, $atyp),
             dstport => ${*$self}->{SOCKS}->{CmdPort}
         );
         $debug->show('Client Send: ');
@@ -1483,7 +1483,7 @@ sub _socks5_accept_command_reply
         );
         $debug->add(hlen => $hlen) unless $resolve;
         $debug->add(
-            bndaddr => $resolve ? ($atyp == ADDR_IPV4 ? inet_ntoa($bndaddr) : Socket::inet_ntop(AF_INET6, $bndaddr)) : $bndaddr,
+            bndaddr => $resolve ? _addr_ntoa($bndaddr, $atyp) : $bndaddr,
             bndport => $port
         );
         $debug->show('Server Send: ');
@@ -1789,7 +1789,7 @@ sub send
     {
         unless (($dstport, $dstaddr, $dstaddr_type) = eval { (unpack_sockaddr_in($peer), ADDR_IPV4) })
         {
-            ($dstport, $dstaddr, $dstaddr_type) = ((unpack_sockaddr_in($peer))[0,1], ADDR_IPV6);
+            ($dstport, $dstaddr, $dstaddr_type) = ((unpack_sockaddr_in6($peer))[0,1], ADDR_IPV6);
         }
     }
     
