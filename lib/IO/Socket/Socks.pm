@@ -22,13 +22,9 @@ use constant
 tie $SOCKET_CLASS, 'IO::Socket::Socks::SocketClassVar', $SOCKET_CLASS;
 unless ($SOCKET_CLASS)
 {
-    if (eval{require IO::Socket::IP; IO::Socket::IP->VERSION(0.35)})
+    if (eval{require IO::Socket::IP; IO::Socket::IP->VERSION(0.36)})
     {
         $SOCKET_CLASS = 'IO::Socket::IP';
-    }
-    elsif (eval{require IO::Socket::INET6; IO::Socket::INET6->VERSION(2.62)})
-    {
-        $SOCKET_CLASS = 'IO::Socket::INET6';
     }
     else
     {
@@ -451,7 +447,7 @@ sub connect
                 :
                 $self->SUPER::connect(@_);
 
-    if (($! == EINPROGRESS || $! == EWOULDBLOCK || $! == EAGAIN) && $self->blocking == 0)
+    if (($! == EINPROGRESS || $! == EWOULDBLOCK) && $self->blocking == 0)
     {
         $SOCKS_ERROR->set(SOCKS_WANT_WRITE, 'Socks want write');
     }
@@ -501,7 +497,7 @@ sub _connect
     }
     
     if ($SOCKS_ERROR == undef)
-    { # connection estabilished
+    { # socket connection estabilished
         defined( $self->_run_queue() )
             or return;
     }
@@ -835,33 +831,18 @@ sub _socks5_connect_reply
         
         if($debug)
         {
-            $debug->add(
-                hlen => $hlen,
-                bndaddr => $bndaddr
-            );
+            $debug->add(hlen => $hlen);
         }
     }
     elsif ($atyp == ADDR_IPV4)
     {
-        $reply = $sock->_socks_read(4, ++$reads)
-            or return _fail($reply);
-        $bndaddr = length($reply) == 4 ? inet_ntoa($reply) : undef;
-        
-        if($debug)
-        {
-            $debug->add(bndaddr => $bndaddr);
-        }
+        $bndaddr = $sock->_socks_read(4, ++$reads)
+            or return _fail($bndaddr);
     }
     elsif ($atyp == ADDR_IPV6)
     {
-        $reply = $sock->_socks_read(16, ++$reads)
-            or return _fail($reply);
-        $bndaddr = length($reply) == 16 ? Socket::inet_ntop(AF_INET6, $reply) : undef;
-        
-        if($debug)
-        {
-            $debug->add(bndaddr => $bndaddr);
-        }
+        $bndaddr = $sock->_socks_read(16, ++$reads)
+            or return _fail($bndaddr);
     }
     else
     {
@@ -880,7 +861,11 @@ sub _socks5_connect_reply
     
     if($debug && !$self->_debugged(++$debugs))
     {
-        $debug->add(bndport => $bndport);
+        my ($addr) = $self->dst;
+        $debug->add(
+            bndaddr => $addr,
+            bndport => $bndport
+        );
         $debug->show('Client Recv: ');
     }
    
@@ -981,19 +966,20 @@ sub _socks4_connect_reply
     
     my ($ver, $rep, $bndport) = unpack('CCn', $reply);
     substr($reply, 0, 4) = '';
-    my $bndaddr = length($reply) == 4 ? inet_ntoa($reply) : undef;
     
     ${*$self}->{SOCKS}->{DstAddrType} = ADDR_IPV4;
-    ${*$self}->{SOCKS}->{DstAddr} = $bndaddr;
+    ${*$self}->{SOCKS}->{DstAddr} = $reply;
     ${*$self}->{SOCKS}->{DstPort} = $bndport;
     
     if($debug && !$self->_debugged(++$debugs))
     {
+        my ($addr) = $self->dst;
+        
         $debug->add(
             ver => $ver,
             rep => $rep,
             bndport => $bndport,
-            bndaddr => $bndaddr
+            bndaddr => $addr
         );
         $debug->show('Client Recv: ');
     }
@@ -1758,7 +1744,17 @@ sub command_reply
 sub dst
 {
     my $self = shift;
-    return @{${*$self}->{SOCKS}}{qw/DstAddr DstPort DstAddrType/};
+    my ($addr, $port, $atype) = @{${*$self}->{SOCKS}}{qw/DstAddr DstPort DstAddrType/};
+    return (_addr_ntoa($addr, $atype), $port, $atype);
+}
+
+sub _addr_ntoa
+{
+    my ($addr, $atype) = @_;
+    
+    return inet_ntoa($addr) if ($atype == ADDR_IPV4);
+    return Socket::inet_ntop(AF_INET6, $addr) if ($atype == ADDR_IPV6);
+    return $addr;
 }
 
 ###############################################################################
@@ -1782,28 +1778,54 @@ sub send
     croak "send: Cannot determine peer address"
         unless defined $peer;
         
-    my ($dstport, $dstaddr) = sockaddr_in($peer);
-    my ($sndaddr, $sndport) = $self->dst;
-    if($sndaddr eq '0.0.0.0')
+    my ($dstport, $dstaddr, $dstaddr_type);
+    if (ref $peer eq 'ARRAY')
     {
-        $sndaddr = ${*$self}->{SOCKS}->{ProxyAddr};
-    }
-    $sndaddr = inet_aton($sndaddr);
-    $peer = sockaddr_in($sndport, $sndaddr);
-    
-    my ($atyp, $hlen);
-    if($resolve)
-    {
-        $atyp = ADDR_DOMAINNAME;
-        $dstaddr = inet_ntoa($dstaddr);
-        $hlen = length($dstaddr);
+        $dstaddr = $peer->[0];
+        $dstport = $peer->[1];
+        $dstaddr_type = ADDR_DOMAINNAME;
     }
     else
     {
-        $atyp = ADDR_IPV4;
+        unless (($dstport, $dstaddr, $dstaddr_type) = eval { (unpack_sockaddr_in($peer), ADDR_IPV4) })
+        {
+            ($dstport, $dstaddr, $dstaddr_type) = ((unpack_sockaddr_in($peer))[0,1], ADDR_IPV6);
+        }
     }
     
-    my $msglen = length($msg) if $debug;
+    my ($sndaddr, $sndport, $sndaddr_type) = $self->dst;
+    if(($sndaddr eq '0.0.0.0' && $sndaddr_type == ADDR_IPV4) || ($sndaddr eq '::' && $sndaddr_type == ADDR_IPV6))
+    {
+        $sndaddr = ${*$self}->{SOCKS}->{ProxyAddr};
+        $sndaddr_type = ADDR_DOMAINNAME;
+    }
+    if ($sndaddr_type == ADDR_DOMAINNAME)
+    {
+        ($sndaddr_type, $sndaddr) = _resolve($sndaddr)
+            or $SOCKS_ERROR->set(ISS_CANT_RESOLVE, $@ = "Can't resolve `$sndaddr'"), return;
+    }
+    else
+    {
+        $sndaddr = ${*$self}->{SOCKS}->{DstAddr};
+    }
+    
+    $peer = $sndaddr_type == ADDR_IPV4 ? pack_sockaddr_in($sndport, $sndaddr) : pack_sockaddr_in6($sndport, $sndaddr);
+    
+    my $hlen;
+    if ($dstaddr_type == ADDR_DOMAINNAME)
+    {
+        if ($resolve)
+        {
+            $hlen = length $dstaddr;
+        }
+        else
+        {
+            ($dstaddr_type, $dstaddr) = _resolve($dstaddr)
+                or $SOCKS_ERROR->set(ISS_CANT_RESOLVE, $@ = "Can't resolve `$dstaddr'"), return;
+        }
+    }
+    
+    my $msglen = $debug ? length($msg) : 0;
     
     # we need to add socks header to the message
     # +----+------+------+----------+----------+----------+
@@ -1811,18 +1833,18 @@ sub send
     # +----+------+------+----------+----------+----------+
     # | 2  |  1   |  1   | Variable |    2     | Variable |
     # +----+------+------+----------+----------+----------+
-    $msg = pack('C4', 0, 0, 0, $atyp) . ($resolve ? pack('C', $hlen) : '') . $dstaddr . pack('n', $dstport) . $msg;
+    $msg = pack('C4', 0, 0, 0, $dstaddr_type) . (defined $hlen ? pack('C', $hlen) : '') . $dstaddr . pack('n', $dstport) . $msg;
     
     if($debug)
     {
         $debug->add(
             rsv => '00',
             frag => '0',
-            atyp => $atyp
+            atyp => $dstaddr_type
         );
-        $debug->add(hlen => $hlen) if $resolve;
+        $debug->add(hlen => $hlen) if defined $hlen;
         $debug->add(
-            dstaddr => $resolve ? $dstaddr : (length($dstaddr) == 4 ? inet_ntoa($dstaddr) : undef),
+            dstaddr => defined $hlen ? $dstaddr : _addr_ntoa($dstaddr, $dstaddr_type),
             dstport => $dstport,
             data => "...($msglen)"
         );
@@ -1848,7 +1870,7 @@ sub recv
     
     my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
     
-    defined(my $peer = $self->SUPER::recv($_[0], $_[1]+262, $_[2]) )
+    defined( $self->SUPER::recv($_[0], $_[1]+262, $_[2]) )
         or return;
     
     # we need to remove socks header from the message
@@ -1889,13 +1911,11 @@ sub recv
     elsif($atyp == ADDR_IPV4)
     {
         $dstaddr = substr($_[0], 0, 4);
-        $dstaddr = length($dstaddr) == 4 ? inet_ntoa($dstaddr) : undef;
         substr($_[0], 0, 4) = '';
     }
     elsif($atyp == ADDR_IPV6)
     {
         $dstaddr = substr($_[0], 0, 16);
-        $dstaddr = length($dstaddr) == 16 ? Socket::inet_ntop(AF_INET6, $dstaddr) : undef;
         substr($_[0], 0, 16) = '';
     }
     else
@@ -1911,14 +1931,17 @@ sub recv
     if($debug)
     {
         $debug->add(
-            dstaddr => $dstaddr,
+            dstaddr => _addr_ntoa($dstaddr, $atyp),
             dstport => $dstport,
             data => "...(" . length($_[0]) . ")"
         );
         $debug->show('Client Recv: ');
     }
     
-    return $peer;
+    
+    return pack_sockaddr_in($dstport, $dstaddr) if $atyp == ADDR_IPV4;
+    return pack_sockaddr_in6($dstport, $dstaddr) if $atyp == ADDR_IPV6;
+    return [$dstaddr, $dstport];
 }
 
 ###############################################################################
@@ -2144,7 +2167,7 @@ sub _fail
 sub _resolve
 {
     my $addr = shift;
-    my ($err, @res) = Socket::getaddrinfo($addr, undef, {protocol => Socket::IPPROTO_TCP, socktype => SOCK_STREAM});
+    my ($err, @res) = Socket::getaddrinfo($addr, undef, {protocol => Socket::IPPROTO_TCP, socktype => Socket::SOCK_STREAM});
     return if $err;
     
     for my $r (@res)
