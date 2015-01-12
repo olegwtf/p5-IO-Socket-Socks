@@ -142,14 +142,7 @@ use constant {
 	Q_DEBUGS => 5,
 };
 
-#------------------------------------------------------------------------------
-# sub new is handled by IO::Socket::INET
-#------------------------------------------------------------------------------
-###############################################################################
-#
-# new_from_fd/new_from_socket - create IO::Socket::Socks object from existing
-# non-connected socket
-###############################################################################
+
 sub new_from_fd {
 	my ($class, $sock, %arg) = @_;
 
@@ -166,10 +159,6 @@ sub new_from_fd {
 
 *new_from_socket = \&new_from_fd;
 
-###############################################################################
-#
-# start_SOCKS - start socks handshake on already connected socket
-###############################################################################
 sub start_SOCKS {
 	my ($class, $sock, %arg) = @_;
 
@@ -185,11 +174,6 @@ sub start_SOCKS {
 	return $sock->command(%arg) ? $sock : undef;
 }
 
-###############################################################################
-#
-# socket - override parent socket() to prevent recreation of already created socket
-#          this is useful for new_from_fd/new_from_socket
-###############################################################################
 sub socket {
 	my $self = shift;
 
@@ -203,11 +187,6 @@ sub socket {
 	return $self->SUPER::socket(@_);
 }
 
-###############################################################################
-#
-# configure - read in the config hash and populate the object.
-#
-###############################################################################
 sub configure {
 	my $self = shift;
 	my $args = shift;
@@ -260,11 +239,6 @@ sub configure {
 	return $self;
 }
 
-###############################################################################
-#
-# _configure - reusable configure operations
-#
-###############################################################################
 sub _configure {
 	my $self = shift;
 	my $args = shift;
@@ -368,56 +342,17 @@ sub _configure {
 	return 1;
 }
 
-sub _validate_multi_version {
-	my $multi_ver = shift;
-
-	if (@$multi_ver == 1) {
-		return $multi_ver->[0] == 4 || $multi_ver->[0] == 5;
-	}
-
-	if (@$multi_ver == 2) {
-		return
-		     $multi_ver->[0] != $multi_ver->[1]
-		  && ($multi_ver->[0] == 4 || $multi_ver->[0] == 5)
-		  && ($multi_ver->[1] == 4 || $multi_ver->[1] == 5);
-	}
-
-	return;
-}
-
-###############################################################################
-#
-# version - return socks version associated with this socket
-#
-###############################################################################
-
 sub version {
 	my $self = shift;
 	return ${*$self}->{SOCKS}->{Version};
 }
 
-###############################################################################
-#+-----------------------------------------------------------------------------
-#| Connect Functions
-#+-----------------------------------------------------------------------------
-###############################################################################
-
-###############################################################################
-#
-# connect - On a configure, connect is called to open the connection.  When
-#           we do this we have to talk to the SOCKS proxy, log in, and
-#           connect to the remote host.
-#
-###############################################################################
 sub connect {
 	my $self = shift;
 
 	croak("Undefined IO::Socket::Socks object passed to connect.")
 	  unless defined($self);
 
-	#--------------------------------------------------------------------------
-	# Establish a connection
-	#--------------------------------------------------------------------------
 	my $ok =
 	  defined(${*$self}->{SOCKS}->{TCP})
 	  ? ${*$self}->{SOCKS}->{TCP}->SUPER::connect(@_)
@@ -434,11 +369,6 @@ sub connect {
 	$self->_connect();
 }
 
-###############################################################################
-#
-# _connect - reusable connect operations
-#
-###############################################################################
 sub _connect {
 	my $self = shift;
 	${*$self}->{SOCKS}->{ready} = 0;
@@ -478,14 +408,10 @@ sub _connect {
 	return $self;
 }
 
-###############################################################################
-#
-# _run_queue - run tasks from queue, return undef on error, -1 if one of the task
-# returned not completed because of the possible blocking on network operation
-#
-###############################################################################
 sub _run_queue {
-	my $self = shift;
+	# run tasks from queue, return undef on error, -1 if one of the task
+    # returned not completed because of the possible blocking on network operation
+    my $self = shift;
 
 	my $retval;
 	my $sub;
@@ -512,11 +438,6 @@ sub _run_queue {
 	return $retval;
 }
 
-###############################################################################
-#
-# ready - check is non-blocking socket ready to transfer user data
-#
-###############################################################################
 sub ready {
 	my $self = shift;
 
@@ -524,11 +445,6 @@ sub ready {
 	return ${*$self}->{SOCKS}->{ready};
 }
 
-###############################################################################
-#
-# _socks5_connect - Send the opening handsake, and process the reply.
-#
-###############################################################################
 sub _socks5_connect {
 	my $self = shift;
 	my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
@@ -610,13 +526,9 @@ sub _socks5_connect_if_auth {
 	1;
 }
 
-###############################################################################
-#
-# _socks5_connect_auth - Send and receive a SOCKS5 auth handshake (rfc1929)
-#
-###############################################################################
 sub _socks5_connect_auth {
-	my $self = shift;
+	# rfc1929
+    my $self = shift;
 	my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
 	my ($reads, $sends, $debugs) = (0, 0, 0);
 	my $sock =
@@ -683,11 +595,6 @@ sub _socks5_connect_auth {
 	return 1;
 }
 
-###############################################################################
-#
-# _socks_connect_command - Process a SOCKS5 command request
-#
-###############################################################################
 sub _socks5_connect_command {
 	my $self    = shift;
 	my $command = shift;
@@ -824,16 +731,10 @@ sub _socks5_connect_reply {
 	return 1;
 }
 
-###############################################################################
-#
-# _socks4_connect_command - Send the opening handsake, and process the reply.
-#
-###############################################################################
-sub _socks4_connect_command {
 
+sub _socks4_connect_command {
 	# http://ss5.sourceforge.net/socks4.protocol.txt
 	# http://ss5.sourceforge.net/socks4A.protocol.txt
-
 	my $self    = shift;
 	my $command = shift;
 	my $debug   = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
@@ -932,18 +833,6 @@ sub _socks4_connect_reply {
 	return 1;
 }
 
-###############################################################################
-#+-----------------------------------------------------------------------------
-#| Accept Functions
-#+-----------------------------------------------------------------------------
-###############################################################################
-
-###############################################################################
-#
-# accept - When we are accepting new connections, we need to do the SOCKS
-#          handshaking before we return a usable socket.
-#
-###############################################################################
 sub accept {
 	my $self = shift;
 
@@ -1016,13 +905,9 @@ sub accept {
 	}
 }
 
-###############################################################################
-#
-# _socks_accept - Wait for an opening handsake, with any version
-#
-###############################################################################
 sub _socks_accept {
-	my $self = shift;
+	# when 4 and 5 version allowed
+    my $self = shift;
 
 	my $request;
 	$request = $self->_socks_read(1, 0)
@@ -1049,11 +934,6 @@ sub _socks_accept {
 	1;
 }
 
-###############################################################################
-#
-# _socks5_accept - Wait for an opening handsake, and reply.
-#
-###############################################################################
 sub _socks5_accept {
 	my ($self, $ver) = @_;
 	my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
@@ -1156,11 +1036,6 @@ sub _socks5_accept_if_auth {
 	1;
 }
 
-###############################################################################
-#
-# _socks5_accept_auth - Send and receive a SOCKS5 auth handshake (rfc1929)
-#
-###############################################################################
 sub _socks5_accept_auth {
 	my $self = shift;
 	my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
@@ -1235,13 +1110,6 @@ sub _socks5_accept_auth {
 	return 1;
 }
 
-###############################################################################
-#
-# _socks5_acccept_command - Process a SOCKS5 command request.  Since this is
-#                           a library and not a server, we cannot process the
-#                           command.  Let the parent program handle that.
-#
-###############################################################################
 sub _socks5_accept_command {
 	my $self = shift;
 	my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
@@ -1322,14 +1190,6 @@ sub _socks5_accept_command {
 	return 1;
 }
 
-###############################################################################
-#
-# _socks5_acccept_command_reply - Answer a SOCKS5 command request.  Since this
-#                                 is a library and not a server, we cannot
-#                                 process the command.  Let the parent program
-#                                 handle that.
-#
-###############################################################################
 sub _socks5_accept_command_reply {
 	my $self    = shift;
 	my $reply   = shift;
@@ -1377,14 +1237,6 @@ sub _socks5_accept_command_reply {
 	1;
 }
 
-###############################################################################
-#
-# _socks4_accept_command - Wait for an opening handsake and process a SOCKS4
-#                          command request.  Since this is a library and not
-#                          a server, we cannot process the command.  Let the
-#                          parent program handle that.
-#
-###############################################################################
 sub _socks4_accept_command {
 	my ($self, $ver) = @_;
 	my $debug = IO::Socket::Socks::Debug->new() if ${*$self}->{SOCKS}->{Debug};
@@ -1491,14 +1343,6 @@ sub _socks4_accept_command {
 	return 1;
 }
 
-###############################################################################
-#
-# _socks4_acccept_command_reply - Answer a SOCKS4 command request.  Since this
-#                                 is a library and not a server, we cannot
-#                                 process the command.  Let the parent program
-#                                 handle that.
-#
-###############################################################################
 sub _socks4_accept_command_reply {
 	my $self  = shift;
 	my $reply = shift;
@@ -1539,12 +1383,6 @@ sub _socks4_accept_command_reply {
 	1;
 }
 
-###############################################################################
-#
-# command - return the command the user request along with the host and
-#           port to operate on.
-#
-###############################################################################
 sub command {
 	my $self = shift;
 
@@ -1571,11 +1409,6 @@ sub command {
 	}
 }
 
-###############################################################################
-#
-# command_reply - public reply wrapper to the client.
-#
-###############################################################################
 sub command_reply {
 	my $self = shift;
 	${*$self}->{SOCKS}->{ready} = 0;
@@ -1590,30 +1423,12 @@ sub command_reply {
 	$self->_run_queue();
 }
 
-###############################################################################
-#
-# dst - access to the address and port selected by socks server when connect/bind/udpassoc
-#
-###############################################################################
 sub dst {
 	my $self = shift;
 	my ($addr, $port, $atype) = @{ ${*$self}->{SOCKS} }{qw/DstAddr DstPort DstAddrType/};
 	return (_addr_ntoa($addr, $atype), $port, $atype);
 }
 
-sub _addr_ntoa {
-	my ($addr, $atype) = @_;
-
-	return inet_ntoa($addr) if ($atype == ADDR_IPV4);
-	return Socket::inet_ntop(AF_INET6, $addr) if ($atype == ADDR_IPV6);
-	return $addr;
-}
-
-###############################################################################
-#
-# send - send UDP datagram
-#
-###############################################################################
 sub send {
 	my $self = shift;
 
@@ -1694,11 +1509,6 @@ sub send {
 	$self->SUPER::send($msg, $flags, $peer);
 }
 
-###############################################################################
-#
-# recv - receive UDP datagram
-#
-###############################################################################
 sub recv {
 	my $self = shift;
 
@@ -1772,11 +1582,9 @@ sub recv {
 	return [ $dstaddr, $dstport ];
 }
 
-###############################################################################
 #+-----------------------------------------------------------------------------
 #| Helper Functions
 #+-----------------------------------------------------------------------------
-###############################################################################
 sub _socks_send {
 	my $self = shift;
 	my $data = shift;
@@ -1956,6 +1764,23 @@ sub _fail {
 	return -1;
 }
 
+sub _validate_multi_version {
+	my $multi_ver = shift;
+
+	if (@$multi_ver == 1) {
+		return $multi_ver->[0] == 4 || $multi_ver->[0] == 5;
+	}
+
+	if (@$multi_ver == 2) {
+		return
+		     $multi_ver->[0] != $multi_ver->[1]
+		  && ($multi_ver->[0] == 4 || $multi_ver->[0] == 5)
+		  && ($multi_ver->[1] == 4 || $multi_ver->[1] == 5);
+	}
+
+	return;
+}
+
 sub _resolve {
 	my $addr = shift;
 	my ($err, @res) = Socket::getaddrinfo($addr, undef, { protocol => Socket::IPPROTO_TCP, socktype => Socket::SOCK_STREAM });
@@ -1968,6 +1793,14 @@ sub _resolve {
 	}
 
 	return (ADDR_IPV6, (unpack_sockaddr_in6($res[0]{addr}))[1]);
+}
+
+sub _addr_ntoa {
+	my ($addr, $atype) = @_;
+
+	return inet_ntoa($addr) if ($atype == ADDR_IPV4);
+	return Socket::inet_ntop(AF_INET6, $addr) if ($atype == ADDR_IPV6);
+	return $addr;
 }
 
 ###############################################################################
