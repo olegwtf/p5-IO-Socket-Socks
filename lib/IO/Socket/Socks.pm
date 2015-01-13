@@ -1988,66 +1988,62 @@ IO::Socket::Socks - Provides a way to create socks client or server both 4 and 5
 
   use IO::Socket::Socks;
   
-  my $socks = new IO::Socket::Socks(ProxyAddr=>"proxy host",
-                                    ProxyPort=>"proxy port",
-                                    ConnectAddr=>"remote host",
-                                    ConnectPort=>"remote port",
-                                   );
-
-  print $socks "foo\n";
+  my $socks_client = IO::Socket::Socks->new(
+    ProxyAddr   => "proxy host",
+    ProxyPort   => "proxy port",
+    ConnectAddr => "remote host",
+    ConnectPort => "remote port",
+  ) or die $SOCKS_ERROR;
   
-  $socks->close();
+  print $socks_client "foo\n";
+  $socks_client->close();
 
 =head2 Server
 
   use IO::Socket::Socks ':constants';
   
-  my $socks_server = new IO::Socket::Socks(ProxyAddr=>"localhost",
-                                           ProxyPort=>"8000",
-                                           Listen=>1,
-                                           UserAuth=>\&auth,
-                                           RequireAuth=>1
-                                          );
+  my $socks_server = IO::Socket::Socks->new(
+    ProxyAddr   => "localhost",
+    ProxyPort   => 8000,
+    Listen      => 1,
+    UserAuth    => \&auth,
+    RequireAuth => 1
+  ) or die $SOCKS_ERROR;
 
-  while(1)
-  {
-      my $client = $socks_server->accept();
+  while(1) {
+    my $client = $socks_server->accept();
+    
+    unless ($client) {
+      print "ERROR: $SOCKS_ERROR\n";
+      next;
+    }
 
-      if (!defined($client))
-      {
-          print "ERROR: $SOCKS_ERROR\n";
-          next;
-      }
-
-      my $command = $client->command();
-      if ($command->[0] == CMD_CONNECT)
-      {
-         # Handle the CONNECT
-         $client->command_reply(REPLY_SUCCESS, addr, port);
-      }
-        
-      ...
-      #read from the client and send to the CONNECT address
-      ...
-      
-      $client->close();
+    my $command = $client->command();
+    if ($command->[0] == CMD_CONNECT) {
+       # Handle the CONNECT
+       $client->command_reply(REPLY_SUCCESS, addr, port);
+    }
+    
+    ...
+    #read from the client and send to the CONNECT address
+    ...
+    
+    $client->close();
   }
   
-  sub auth
-  {
-      my $user = shift;
-      my $pass = shift;
-  
-      return 1 if (($user eq "foo") && ($pass eq "bar"));
-      return 0;
+  sub auth {
+    my ($user, $pass) = @_;
+    
+    return 1 if $user eq "foo" && $pass eq "bar";
+    return 0;
   }
 
 =head1 DESCRIPTION
 
-IO::Socket::Socks connects to a SOCKS proxy, tells it to open a
+C<IO::Socket::Socks> connects to a SOCKS proxy, tells it to open a
 connection to a remote host/port when the object is created.  The
-object you receive can be used directly as a socket for sending and
-receiving data from the remote host. In addition to create socks client
+object you receive can be used directly as a socket (with C<IO::Socket> interface)
+for sending and receiving data from the remote host. In addition to create socks client
 this module could be used to create socks server. See examples below.
 
 =head1 EXAMPLES
@@ -2068,7 +2064,7 @@ subdirectory in the distribution.
 Creates a new IO::Socket::Socks client object.  new_from_socket() is the same as
 new(), but allows one to create object from an existing and not connected socket 
 (new_from_fd is new_from_socket alias). To make IO::Socket::Socks object from
-connected socket see "start_SOCKS"
+connected socket see C<start_SOCKS>
 
 Both takes the following config hash:
 
@@ -2242,7 +2238,7 @@ Options like ProxyAddr and ProxyPort are not included.
 =head3
 dst( )
 
-Return (host, port) of the remote host after connect/accept or socks server (host, port)
+Return (host, port, address_type) of the remote host after connect/accept or socks server (host, port, address_type)
 after bind/udpassoc.
 
 =head2 Socks Server
@@ -2433,6 +2429,15 @@ Default value is $ENV{SOCKS_DEBUG}. If this variable has true value and
 no SocksDebug option in the constructor specified, then SocksDebug will
 has true value. This variable is not importable.
 
+=head2 $SOCKET_CLASS
+
+With this variable you can get/set base socket class for C<IO::Socket::Socks>.
+By default it tries to use C<IO::Socket::IP> 0.36+ as socket class. And falls
+back to C<IO::Socket::INET> if not available. You can set C<$IO::Socket::Socks::SOCKET_CLASS>
+before loading of C<IO::Socket::Socks> and then it will not try to detect proper base class
+itself. You can also set it after loading of C<IO::Socket::Socks> and this will automatically
+update C<@ISA>, so you shouldn't worry about inheritence.
+
 =head1 CONSTANTS
 
 The following constants could be imported manually or using `:constants' tag:
@@ -2450,8 +2455,9 @@ The following constants could be imported manually or using `:constants' tag:
   AUTHMECH_INVALID
   AUTHREPLY_SUCCESS
   AUTHREPLY_FAILURE
-  ISS_UNKNOWN_ADDRESS
-  ISS_BAD_VERSION
+  ISS_UNKNOWN_ADDRESS # address type sent by client/server not supported by I::S::S
+  ISS_BAD_VERSION     # socks version sent by client/server != specified version
+  ISS_CANT_RESOLVE    # I::S::S failed to resolve some host
   REPLY_SUCCESS
   REPLY_GENERAL_FAILURE
   REPLY_CONN_NOT_ALLOWED
@@ -2471,6 +2477,13 @@ The following constants could be imported manually or using `:constants' tag:
 
 SOCKS_WANT_READ, SOCKS_WANT_WRITE and ESOCKSPROTO are imported by default.
 
+=head1 IPv6
+
+Since version 0.66 C<IO::Socket::Socks> supports IPv6 with help of L<IO::Socket::IP>
+0.36+. And will use C<IO::Socket::IP> as base class if available. However you can
+force set C<$SOCKET_CLASS = "IO::Socket::INET"> to use IPv4 only. See also
+L</$SOCKET_CLASS>
+
 =head1 FAQ
 
 =over
@@ -2487,8 +2500,8 @@ You should compare C<$SOCKS_ERROR> with constants below:
 
   AUTHMECH_INVALID
   AUTHREPLY_FAILURE
-  ISS_UNKNOWN_ADDRESS # address type sent by client/server not supported by I::S::S
-  ISS_BAD_VERSION     # socks version sent by client/server != specified version
+  ISS_UNKNOWN_ADDRESS
+  ISS_BAD_VERSION
   REPLY_GENERAL_FAILURE
   REPLY_CONN_NOT_ALLOWED
   REPLY_NETWORK_UNREACHABLE
@@ -2512,8 +2525,6 @@ The following options are not implemented:
 =item GSSAPI authentication
 
 =item UDP server side support
-
-=item IPV6 support
 
 =back
 
