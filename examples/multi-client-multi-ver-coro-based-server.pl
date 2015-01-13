@@ -17,7 +17,7 @@ use Coro;
 use Coro::Socket;
 
 # make our server Coro aware
-unshift @IO::Socket::Socks::ISA, 'Coro::Socket';
+$IO::Socket::Socks::SOCKET_CLASS = 'Coro::Socket';
 
 my $server = IO::Socket::Socks->new(SocksVersion => [4,5], ProxyAddr => 'localhost', ProxyPort => 1080, Listen => 10)
 	or die $SOCKS_ERROR;
