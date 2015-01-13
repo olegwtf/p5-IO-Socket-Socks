@@ -28,6 +28,7 @@ while ($accepted != 10 && $i < 30) {
 		my $client = $server->accept();
 		$accepted++;
 		ok($client, "Socks 5 accept() $accepted") or diag $SOCKS_ERROR;
+        is($client->version, 5, 'Client version is 5');
 		if ($client) {
 			$client->blocking(0);
 			$server_clients{$client} = $client;
