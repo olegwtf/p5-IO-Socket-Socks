@@ -139,7 +139,8 @@ use constant {
 	Q_BUF    => 2,
 	Q_READS  => 3,
 	Q_SENDS  => 4,
-	Q_DEBUGS => 5,
+	Q_OKCB   => 5,
+	Q_DEBUGS => 6,
 };
 
 
@@ -427,12 +428,15 @@ sub _run_queue {
 
 		last if ($retval == -1);
 		${*$self}->{SOCKS}->{queue_results}{ $elt->[Q_SUB] } = $retval;
+		if ($elt->[Q_OKCB]) {
+			$elt->[Q_OKCB]->();
+		}
 		shift @{ ${*$self}->{SOCKS}->{queue} };
 	}
 
 	if (defined($retval) && !@{ ${*$self}->{SOCKS}->{queue} }) {
 		${*$self}->{SOCKS}->{queue_results} = {};
-		${*$self}->{SOCKS}->{ready}         = 1;
+		${*$self}->{SOCKS}->{ready}         = $SOCKS_ERROR ? 0 : 1;
 	}
 
 	return $retval;
@@ -1166,10 +1170,15 @@ sub _socks5_accept_command {
 		$dstaddr = length($request) == 16 ? Socket::inet_ntop(AF_INET6, $request) : undef;
 	}
 	else {    # unknown address type - how many bytes to read?
-		${*$self}->{SOCKS}->{queue} = [ [ '_socks5_accept_command_reply', [ REPLY_ADDR_NOT_SUPPORTED, '0.0.0.0', 0 ], undef, [], 0 ] ];
-		$! = ESOCKSPROTO;
-		$SOCKS_ERROR->set(REPLY_ADDR_NOT_SUPPORTED, $@ = $CODES{REPLY}->{REPLY_ADDR_NOT_SUPPORTED});
-		return 1;
+		push @{${*$self}->{SOCKS}->{queue}}, [
+			'_socks5_accept_command_reply', [ REPLY_ADDR_NOT_SUPPORTED, '0.0.0.0', 0 ], undef, [], 0,
+			sub {
+				$! = ESOCKSPROTO;
+				$SOCKS_ERROR->set(REPLY_ADDR_NOT_SUPPORTED, $@ = $CODES{REPLY}->{REPLY_ADDR_NOT_SUPPORTED});
+			}
+		];
+		
+		return 0;
 	}
 
 	$request = $self->_socks_read(2, ++$reads)
@@ -1325,10 +1334,15 @@ sub _socks4_accept_command {
 
 	if (defined(${*$self}->{SOCKS}->{UserAuth})) {
 		unless (&{ ${*$self}->{SOCKS}->{UserAuth} }($userid)) {
-			${*$self}->{SOCKS}->{queue} = [ [ '_socks4_accept_command_reply', [ REQUEST_REJECTED_USERID, '0.0.0.0', 0 ], undef, [], 0 ] ];
-			$! = ESOCKSPROTO;
-			$SOCKS_ERROR->set(REQUEST_REJECTED_USERID, $@ = 'Authentication failed with SOCKS4 proxy');
-			return 1;
+			push @{${*$self}->{SOCKS}->{queue}}, [
+				'_socks4_accept_command_reply', [ REQUEST_REJECTED_USERID, '0.0.0.0', 0 ], undef, [], 0,
+				sub {
+					$! = ESOCKSPROTO;
+					$SOCKS_ERROR->set(REQUEST_REJECTED_USERID, $@ = 'Authentication failed with SOCKS4 proxy');
+				}
+			];
+			
+			return 0;
 		}
 	}
 
