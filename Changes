@@ -1,3 +1,10 @@
+0.66
+====
+   - IPv6 support for SOCKS protocol
+   - IPv6 support for socket layer (requires IO::Socket::IP 0.36+)
+   - new $SOCKET_CLASS variable
+   - several non-critical internal fixes and doc updates
+
 0.65
 ====
    - Fix tests failures on OS X (#rt97619)
