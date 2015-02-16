@@ -1,6 +1,7 @@
 package IO::Socket::Socks;
 
 use strict;
+no warnings;
 use IO::Select;
 use Socket;
 use Errno qw(EWOULDBLOCK EAGAIN EINPROGRESS ETIMEDOUT ECONNABORTED);
