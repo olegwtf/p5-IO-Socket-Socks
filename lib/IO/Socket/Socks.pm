@@ -1910,7 +1910,7 @@ sub STORE {
 
 	$self->{v} = $class;
 	eval "use $class; 1" or die $@;
-	$IO::Socket::Socks::ISA[1] = $class;
+	splice(@IO::Socket::Socks::ISA, 1, 1, $class);
 }
 
 sub UNTIE {
