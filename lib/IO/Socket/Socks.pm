@@ -16,7 +16,7 @@ use constant {
 	ESOCKSPROTO      => exists &Errno::EPROTO ? &Errno::EPROTO : 7000,
 };
 
-@ISA = ('Exporter');
+@ISA = ('Exporter', $SOCKET_CLASS||'');
 
 tie $SOCKET_CLASS, 'IO::Socket::Socks::SocketClassVar', $SOCKET_CLASS;
 unless ($SOCKET_CLASS) {
