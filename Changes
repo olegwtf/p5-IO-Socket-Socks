@@ -1,3 +1,8 @@
+0.67
+====
+   - properly push $SOCKET_CLASS defined before loading to @ISA
+   - fix annoying warning about @ISA
+
 0.66
 ====
    - IPv6 support for SOCKS protocol
