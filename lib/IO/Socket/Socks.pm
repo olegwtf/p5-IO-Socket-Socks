@@ -143,7 +143,7 @@ use constant {
 	Q_DEBUGS => 6,
 };
 
-
+our $CAN_CHANGE_SOCKET = 1;
 sub new_from_fd {
 	my ($class, $sock, %arg) = @_;
 
@@ -155,6 +155,9 @@ sub new_from_fd {
 	}
 
 	scalar(%arg) or return $sock;
+	
+	# do not allow to create new socket
+	local $CAN_CHANGE_SOCKET = 0;
 	return $sock->configure(\%arg);
 }
 
@@ -178,13 +181,7 @@ sub start_SOCKS {
 sub socket {
 	my $self = shift;
 
-	if (-S $self) {
-		${*$self}{'io_socket_domain'} ||= $_[0];
-		${*$self}{'io_socket_type'}   ||= $_[1];
-		${*$self}{'io_socket_proto'}  ||= $_[2];
-		return $self;
-	}
-
+	return $self unless $CAN_CHANGE_SOCKET;
 	return $self->SUPER::socket(@_);
 }
 
@@ -365,6 +362,10 @@ sub connect {
 	elsif (!$ok) {
 		$SOCKS_ERROR->set($!, $@ = "Connection to proxy failed: $!");
 		return;
+	}
+	else {
+		# connect() may be called several times by SUPER class
+		$SOCKS_ERROR->set();
 	}
 
 	$self->_connect();
