@@ -1,6 +1,6 @@
 0.68
 ====
-	- try to play well with multiple connections attempts which IO::Socket::IP backend may produce
+   - try to play well with multiple connections attempts which IO::Socket::IP backend may produce
 
 0.67
 ====
