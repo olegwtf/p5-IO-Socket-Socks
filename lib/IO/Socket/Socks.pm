@@ -2115,11 +2115,13 @@ Both takes the following config hash:
   BindPort => Port of the remote machine which will
               connect to the proxy server after bind request
   
-  UdpAddr => Associate UDP socket on the server with this client
-             hostname
+  UdpAddr => Expected address where datagrams will be sent. Fill it with address
+             constains all zeros if address is not known at this moment.
+             Proxy server may use this information to limit access to the association.
   
-  UdpPort => Associate UDP socket on the server with this client
-             port
+  UdpPort => Expected address where datagrams will be sent. Use zero port
+             if port is not known at this moment. Proxy server may use this
+             information to limit access to the association.
   
   AuthType => What kind of authentication to support:
               none       - no authentication (default)

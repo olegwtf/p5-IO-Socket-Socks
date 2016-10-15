@@ -9,7 +9,7 @@ use strict;
 
 my $sock = IO::Socket::Socks->new(
     UdpAddr => 'localhost',
-    UdpPort => 8344,
+    UdpPort => 13,
     ProxyAddr => 'localhost',
     ProxyPort => 1080,
     SocksDebug => 1
