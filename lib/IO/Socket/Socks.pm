@@ -325,8 +325,6 @@ sub _configure {
 		}
 		${*$self}->{SOCKS}->{CmdAddr} = delete($args->{UdpAddr});
 		${*$self}->{SOCKS}->{CmdPort} = delete($args->{UdpPort});
-		$args->{LocalAddr} = ${*$self}->{SOCKS}->{CmdAddr};
-		$args->{LocalPort} = ${*$self}->{SOCKS}->{CmdPort};
 		${*$self}->{SOCKS}->{TCP} = __PACKAGE__->new(    # TCP backend for UDP socket
 			Timeout => $args->{Timeout},
 			Proto   => 'tcp'
