@@ -326,8 +326,10 @@ sub _configure {
 		${*$self}->{SOCKS}->{CmdAddr} = delete($args->{UdpAddr});
 		${*$self}->{SOCKS}->{CmdPort} = delete($args->{UdpPort});
 		${*$self}->{SOCKS}->{TCP} = __PACKAGE__->new(    # TCP backend for UDP socket
-			Timeout => $args->{Timeout},
-			Proto   => 'tcp'
+			Timeout  => $args->{Timeout},
+			Proto    => 'tcp',
+			PeerAddr => $args->{ProxyAddr},
+			PeerPort => $args->{ProxyPort},
 		) or return;
 	}
 	elsif (exists($args->{ConnectAddr}) && exists($args->{ConnectPort})) {
@@ -351,7 +353,7 @@ sub connect {
 
 	my $ok =
 	  defined(${*$self}->{SOCKS}->{TCP})
-	  ? ${*$self}->{SOCKS}->{TCP}->SUPER::connect(@_)
+	  ? 1
 	  : $self->SUPER::connect(@_);
 
 	if (($! == EINPROGRESS || $! == EWOULDBLOCK) && $self->blocking == 0) {
@@ -366,6 +368,9 @@ sub connect {
 		$SOCKS_ERROR->set();
 	}
 
+	return $ok # proxy address was not specified, so do not make socks handshake
+		unless ${*$self}->{SOCKS}->{ProxyAddr} && ${*$self}->{SOCKS}->{ProxyPort};
+	
 	$self->_connect();
 }
 
