@@ -2119,10 +2119,10 @@ Both takes the following config hash:
               connect to the proxy server after bind request
   
   UdpAddr => Expected address where datagrams will be sent. Fill it with address
-             constains all zeros if address is not known at this moment.
+             of all zeros if address is not known at this moment.
              Proxy server may use this information to limit access to the association.
   
-  UdpPort => Expected address where datagrams will be sent. Use zero port
+  UdpPort => Expected port where datagrams will be sent. Use zero port
              if port is not known at this moment. Proxy server may use this
              information to limit access to the association.
   
