@@ -330,6 +330,8 @@ sub _configure {
 			Proto    => 'tcp',
 			PeerAddr => $args->{ProxyAddr},
 			PeerPort => $args->{ProxyPort},
+			exists $args->{Blocking} ?
+				(Blocking => $args->{Blocking}) : ()
 		) or return;
 	}
 	elsif (exists($args->{ConnectAddr}) && exists($args->{ConnectPort})) {
@@ -356,7 +358,8 @@ sub connect {
 	  ? 1
 	  : $self->SUPER::connect(@_);
 
-	if (($! == EINPROGRESS || $! == EWOULDBLOCK) && $self->blocking == 0) {
+	if (($! == EINPROGRESS || $! == EWOULDBLOCK) && 
+	    (${*$self}->{SOCKS}->{TCP} || $self)->blocking == 0) {
 		$SOCKS_ERROR->set(SOCKS_WANT_WRITE, 'Socks want write');
 	}
 	elsif (!$ok) {
@@ -409,8 +412,31 @@ sub _connect {
 		defined($self->_run_queue())
 		  or return;
 	}
+	else {
+		if ($self->isa('IO::Socket::IP')) {
+			# IO::Socket::IP requires multiple connect calls
+			# when performing non-blocking multi-homed connect
+			unshift @{ ${*$self}->{SOCKS}->{queue} }, ['_socket_connect', [], undef, [], 0];
+		}
+		
+		return; # connect() return value
+	}
 
 	return $self;
+}
+
+sub _socket_connect {
+	my $self = shift;
+	my $sock = ${*$self}->{SOCKS}->{TCP} || $self;
+	
+	return 1 if $sock->SUPER::connect();
+	if ($! == EINPROGRESS || $! == EWOULDBLOCK) {
+		$SOCKS_ERROR->set(SOCKS_WANT_WRITE, 'Socks want write');
+		return -1;
+	}
+	
+	$SOCKS_ERROR->set($!, $@ = "Connection to proxy failed: $!");
+	return;
 }
 
 sub _run_queue {
@@ -431,7 +457,7 @@ sub _run_queue {
 		}
 
 		last if ($retval == -1);
-		${*$self}->{SOCKS}->{queue_results}{ $elt->[Q_SUB] } = $retval;
+		${*$self}->{SOCKS}->{queue_results}{$sub} = $retval;
 		if ($elt->[Q_OKCB]) {
 			$elt->[Q_OKCB]->();
 		}
