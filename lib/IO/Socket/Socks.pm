@@ -2240,6 +2240,12 @@ Example:
         else {
             die $SOCKS_ERROR;
         }
+        
+        # NOTE: when base class ($IO::Socket::Socks::SOCKET_CLASS) is IO::Socket::IP
+        # and you are using kqueue or epoll to check for readable/writable sockets
+        # you need to readd $sock to kqueue/epoll after each call to ready() (actually until socket will be connected to proxy server),
+        # because IO::Socket::IP may change internal socket of $sock for milti-homed hosts.
+        # There is no such problem when you are using select/poll
     }
     
     # you may want to return socket to blocking state by $sock->blocking(1)
