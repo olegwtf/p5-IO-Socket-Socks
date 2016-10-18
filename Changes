@@ -1,3 +1,8 @@
+0.69
+====
+   - Several clarifications and fixes for UDP proxying
+   - Add support for non-blocking multi-homed connect to proxy
+
 0.68
 ====
    - try to play well with multiple connections attempts which IO::Socket::IP backend may produce
