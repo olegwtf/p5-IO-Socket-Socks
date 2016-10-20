@@ -158,7 +158,8 @@ sub new_from_fd {
 	
 	# do not allow to create new socket
 	local $CAN_CHANGE_SOCKET = 0;
-	return $sock->configure(\%arg);
+	$sock->configure(\%arg) || !$sock->blocking || return undef;
+	$sock;
 }
 
 *new_from_socket = \&new_from_fd;
@@ -417,9 +418,12 @@ sub _connect {
 			# IO::Socket::IP requires multiple connect calls
 			# when performing non-blocking multi-homed connect
 			unshift @{ ${*$self}->{SOCKS}->{queue} }, ['_socket_connect', [], undef, [], 0];
+			
+			# IO::Socket::IP::connect() returns false for non-blocking connections in progress
+			# IO::Socket::INET::connect() returns true for non-blocking connections in progress
+			# LOL
+			return; # connect() return value
 		}
-		
-		return; # connect() return value
 	}
 
 	return $self;
