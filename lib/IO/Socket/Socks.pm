@@ -129,7 +129,7 @@ use constant {
 
 $CODES{REPLY}->{&REQUEST_GRANTED}         = "request granted";
 $CODES{REPLY}->{&REQUEST_FAILED}          = "request rejected or failed";
-$CODES{REPLY}->{&REQUEST_REJECTED_IDENTD} = "request rejected becasue SOCKS server cannot connect to identd on the client";
+$CODES{REPLY}->{&REQUEST_REJECTED_IDENTD} = "request rejected because SOCKS server cannot connect to identd on the client";
 $CODES{REPLY}->{&REQUEST_REJECTED_USERID} = "request rejected because the client program and identd report different user-ids";
 
 # queue
@@ -2432,7 +2432,7 @@ is.  The REPLY CODE is one of the constants as follows (integer value):
   For socks v4
   REQUEST_GRANTED(90): request granted
   REQUEST_FAILED(91): request rejected or failed
-  REQUEST_REJECTED_IDENTD(92): request rejected becasue SOCKS server cannot connect to identd on the client
+  REQUEST_REJECTED_IDENTD(92): request rejected because SOCKS server cannot connect to identd on the client
   REQUEST_REJECTED_USERID(93): request rejected because the client program and identd report different user-ids
   
   For socks v5
@@ -2492,7 +2492,7 @@ By default it tries to use C<IO::Socket::IP> 0.36+ as socket class. And falls
 back to C<IO::Socket::INET> if not available. You can set C<$IO::Socket::Socks::SOCKET_CLASS>
 before loading of C<IO::Socket::Socks> and then it will not try to detect proper base class
 itself. You can also set it after loading of C<IO::Socket::Socks> and this will automatically
-update C<@ISA>, so you shouldn't worry about inheritence.
+update C<@ISA>, so you shouldn't worry about inheritance.
 
 =head1 CONSTANTS
 
