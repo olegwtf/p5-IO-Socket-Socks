@@ -176,6 +176,7 @@ sub start_SOCKS {
 
 	${*$sock}->{SOCKS} = { RequireAuth => 0 };
 
+	$SOCKS_ERROR->set();
 	return $sock->command(%arg) ? $sock : undef;
 }
 
