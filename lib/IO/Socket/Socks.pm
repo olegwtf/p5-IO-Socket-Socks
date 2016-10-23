@@ -362,6 +362,7 @@ sub connect {
 
 	if (($! == EINPROGRESS || $! == EWOULDBLOCK) && 
 	    (${*$self}->{SOCKS}->{TCP} || $self)->blocking == 0) {
+		${*$self}->{SOCKS}->{_in_progress} = 1;
 		$SOCKS_ERROR->set(SOCKS_WANT_WRITE, 'Socks want write');
 	}
 	elsif (!$ok) {
@@ -410,11 +411,7 @@ sub _connect {
 		];
 	}
 
-	if ($SOCKS_ERROR == undef) {    # socket connection estabilished
-		defined($self->_run_queue())
-		  or return;
-	}
-	else {
+	if (delete ${*$self}->{SOCKS}->{_in_progress}) { # socket connection not estabilished yet
 		if ($self->isa('IO::Socket::IP')) {
 			# IO::Socket::IP requires multiple connect calls
 			# when performing non-blocking multi-homed connect
@@ -425,6 +422,10 @@ sub _connect {
 			# LOL
 			return; # connect() return value
 		}
+	}
+	else {
+		defined($self->_run_queue())
+			or return;
 	}
 
 	return $self;
