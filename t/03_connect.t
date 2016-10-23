@@ -174,7 +174,7 @@ if (ok($sock, "socks object created from plain socket")) {
 	is(fileno($sock), fileno($unconnected_sock), "socks object uses plain socket");
 }
 
-$sock = "$IO::Socket::Socks::SOCKET_CLASS"->new(PeerAddr => $s_host, PeerPort => $s_port);
+$sock = $IO::Socket::Socks::SOCKET_CLASS->new(PeerAddr => $s_host, PeerPort => $s_port);
 if (ok($sock, "$IO::Socket::Socks::SOCKET_CLASS socket created")) {
 	$sock = IO::Socket::Socks->start_SOCKS($sock, ConnectAddr => $h_host, ConnectPort => $h_port);
 	ok($sock, "$IO::Socket::Socks::SOCKET_CLASS socket upgraded to IO::Socket::Socks");
@@ -186,5 +186,73 @@ if (ok($sock, "$IO::Socket::Socks::SOCKET_CLASS socket created")) {
 }
 
 kill 15, $s_pid;
+
+SKIP: {
+	skip "SOCKS_SLOW_TESTS environment variable should has true value", 1 unless $ENV{SOCKS_SLOW_TESTS} || $ENV{AUTOMATED_TESTING};
+	($s_pid, $s_host, $s_port) = make_socks_server(5, undef, undef, reply => 3);
+	
+	socket(my $unconnected_sock, $family, SOCK_STREAM, getprotobyname('tcp'))  || die "socket: $!";
+	my $start = time();
+	$sock = IO::Socket::Socks->new_from_socket($unconnected_sock, ProxyAddr => $s_host, ProxyPort => $s_port, ConnectAddr => $h_host, ConnectPort => $h_port, Blocking => 0);
+	ok($sock, "new non-bloking object from plain socket created");
+	ok(!$sock->blocking, 'object is non-blocking');
+	my $time_spent = time()-$start;
+	ok($time_spent < 3, 'new_from_socket: Socks 5 non-blocking connect time') or diag "$time_spent sec spent";
+	
+	my $sel = IO::Select->new($sock);
+	my $i = 0;
+	$start = time();
+	until ($sock->ready) {
+		$i++;
+		$time_spent = time()-$start;
+		ok($time_spent < 1, "new_from_socket: Connection attempt $i not blocked") or diag "$time_spent sec spent";
+		if ($SOCKS_ERROR == SOCKS_WANT_READ) {
+			$sel->can_read(0.8);
+		}
+		elsif ($SOCKS_ERROR == SOCKS_WANT_WRITE) {
+			$sel->can_write(0.8);
+		}
+		else {
+			last;
+		}
+		$start = time();
+	}
+	ok($sock->ready, 'new_from_socket: Socks 5 non-blocking socket ready') or diag $SOCKS_ERROR;
+    is($sock->version, 5, 'new_from_socket: Version is 5 for non-blocking connect');
+	
+	$SOCKS_ERROR->set(SOCKS_WANT_WRITE, 'TEST rt#118471');
+	$sock = $IO::Socket::Socks::SOCKET_CLASS->new(PeerAddr => $s_host, PeerPort => $s_port);
+	$sock->blocking(0);
+	$start = time();
+	$sock = IO::Socket::Socks->start_SOCKS($sock, ConnectAddr => $h_host, ConnectPort => $h_port);
+	ok($sock, "$IO::Socket::Socks::SOCKET_CLASS socket upgraded to IO::Socket::Socks");
+	ok(!$sock->blocking, 'object is non-blocking');
+	$time_spent = time()-$start;
+	ok($time_spent < 3, 'start_SOCKS: Socks 5 non-blocking connect time') or diag "$time_spent sec spent";
+	
+	$sel = IO::Select->new($sock);
+	$i = 0;
+	$start = time();
+	until ($sock->ready) {
+		$i++;
+		$time_spent = time()-$start;
+		ok($time_spent < 1, "start_SOCKS: Connection attempt $i not blocked") or diag "$time_spent sec spent";
+		if ($SOCKS_ERROR == SOCKS_WANT_READ) {
+			$sel->can_read(0.8);
+		}
+		elsif ($SOCKS_ERROR == SOCKS_WANT_WRITE) {
+			$sel->can_write(0.8);
+		}
+		else {
+			last;
+		}
+		$start = time();
+	}
+	ok($sock->ready, 'start_SOCKS: Socks 5 non-blocking socket ready') or diag $SOCKS_ERROR;
+    is($sock->version, 5, 'start_SOCKS: Version is 5 for non-blocking connect');
+    
+	kill 15, $s_pid;
+}
+
 kill 15, $h_pid;
 done_testing();
