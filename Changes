@@ -1,3 +1,7 @@
+0.71
+====
+   - Fix start_SOCKS() which may be broken in two previous releases: rt#118471
+
 0.70
 ====
    - Fix non-blocking connections when IO::Socket::INET used as base class
