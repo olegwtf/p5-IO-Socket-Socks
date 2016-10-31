@@ -1,3 +1,6 @@
+0.72
+   - Fix tests: rt#118522
+
 0.71
 ====
    - Fix start_SOCKS() which may be broken in two previous releases: rt#118471
