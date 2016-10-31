@@ -158,7 +158,7 @@ sub new_from_fd {
 	
 	# do not allow to create new socket
 	local $CAN_CHANGE_SOCKET = 0;
-	$sock->configure(\%arg) || !$sock->blocking || return undef;
+	$sock->configure(\%arg) || !$sock->blocking || return;
 	$sock;
 }
 
