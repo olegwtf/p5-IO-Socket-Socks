@@ -173,8 +173,8 @@ ok($unconnected_sock, "plain socket still alive");
 if (ok($sock, "socks object created from plain socket")) {
 	is(fileno($sock), fileno($unconnected_sock), "socks object uses plain socket");
 }
-
-$sock = $IO::Socket::Socks::SOCKET_CLASS->new(PeerAddr => $s_host, PeerPort => $s_port);
+        # without quotes will not work on old perl (<= 5.14?)
+$sock = "$IO::Socket::Socks::SOCKET_CLASS"->new(PeerAddr => $s_host, PeerPort => $s_port);
 if (ok($sock, "$IO::Socket::Socks::SOCKET_CLASS socket created")) {
 	$sock = IO::Socket::Socks->start_SOCKS($sock, ConnectAddr => $h_host, ConnectPort => $h_port);
 	ok($sock, "$IO::Socket::Socks::SOCKET_CLASS socket upgraded to IO::Socket::Socks");
@@ -221,7 +221,7 @@ SKIP: {
     is($sock->version, 5, 'new_from_socket: Version is 5 for non-blocking connect');
 	
 	$SOCKS_ERROR->set(SOCKS_WANT_WRITE, 'TEST rt#118471');
-	$sock = $IO::Socket::Socks::SOCKET_CLASS->new(PeerAddr => $s_host, PeerPort => $s_port);
+	$sock = "$IO::Socket::Socks::SOCKET_CLASS"->new(PeerAddr => $s_host, PeerPort => $s_port);
 	$sock->blocking(0);
 	$start = time();
 	$sock = IO::Socket::Socks->start_SOCKS($sock, ConnectAddr => $h_host, ConnectPort => $h_port);
