@@ -1,7 +1,14 @@
+0.74
+====
+   - Fix tests fails with no '.' in @INC: rt#121104
+
+
 0.73
+====
    - Fix new_from_fd/new_from_socket which was broken since 0.69
 
 0.72
+====
    - Fix tests: rt#118522
 
 0.71
