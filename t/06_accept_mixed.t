@@ -4,7 +4,8 @@ use Test::More;
 use IO::Socket::Socks qw(:DEFAULT :constants);
 use IO::Select;
 use strict;
-require 't/subs.pm';
+use Cwd;
+require(getcwd."/t/subs.pm");
 
 my $server = IO::Socket::Socks->new(Listen => 10, Blocking => 0, SocksVersion => [4,5], SocksResolve => 1)
     or die $@;

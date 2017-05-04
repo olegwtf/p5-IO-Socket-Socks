@@ -6,7 +6,8 @@ use IO::Socket::Socks;
 use IO::Select;
 use Time::HiRes 'time';
 use strict;
-require 't/subs.pm';
+use Cwd;
+require(getcwd."/t/subs.pm");
 
 if( $^O eq 'MSWin32' ) {
 	plan skip_all => 'Fork and Windows are incompatible';

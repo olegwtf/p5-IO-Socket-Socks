@@ -72,7 +72,8 @@ use IO::Socket::Socks;
 use IO::Select;
 use Time::HiRes;
 use strict;
-require 't/subs.pm';
+use Cwd;
+require(getcwd."/t/subs.pm");
 
 use constant CONN_CNT => 3;
 
